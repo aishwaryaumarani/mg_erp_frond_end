@@ -1,0 +1,51 @@
+import 'package:flutter/material.dart';
+
+/// Small colored pill used everywhere a document/master status is
+/// shown (spec sec. 14: "Use clear status colors and avoid clutter").
+class StatusBadge extends StatelessWidget {
+  final String status;
+  const StatusBadge({super.key, required this.status});
+
+  Color _color(BuildContext context) {
+    switch (status.toLowerCase()) {
+      case 'active':
+      case 'paid':
+      case 'confirmed':
+      case 'accepted':
+      case 'posted':
+      case 'delivered':
+        return Colors.green;
+      case 'inactive':
+      case 'cancelled':
+      case 'rejected':
+        return Colors.red;
+      case 'draft':
+        return Colors.grey;
+      case 'partially paid':
+      case 'partially delivered':
+      case 'in progress':
+      case 'sent':
+      case 'negotiation':
+        return Colors.orange;
+      default:
+        return Theme.of(context).colorScheme.primary;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _color(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Text(
+        status,
+        style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}

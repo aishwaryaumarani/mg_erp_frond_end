@@ -1,0 +1,279 @@
+import 'package:flutter/material.dart';
+import '../models/models.dart';
+import '../services/api_service.dart';
+import '../widgets/doc_items_editor.dart';
+import '../widgets/status_badge.dart';
+
+const _orderStatuses = ['Draft', 'Sent', 'Confirmed', 'Cancelled'];
+
+/// Purchase Order screen -- the last stop of the Purchase flow implemented
+/// so far (Supplier -> Purchase Inquiry -> Supplier Quotation -> Purchase
+/// Order). Orders are normally created by accepting a Supplier Quotation
+/// (see [openPurchaseOrderForm]'s use from supplier_quotation_screen.dart),
+/// but a standalone "New Order" is also available. Creating a PO does NOT
+/// move inventory -- only a future Goods Receipt (Phase 5) does.
+class PurchaseOrderScreen extends StatefulWidget {
+  const PurchaseOrderScreen({super.key});
+
+  @override
+  State<PurchaseOrderScreen> createState() => _PurchaseOrderScreenState();
+}
+
+class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
+  List<PurchaseOrder> _orders = [];
+  List<Supplier> _suppliers = [];
+  List<Product> _products = [];
+  List<Tax> _taxes = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final results = await Future.wait([
+        ApiService.instance.list('/api/purchase-orders/'),
+        ApiService.instance.list('/api/suppliers/'),
+        ApiService.instance.list('/api/products/'),
+        ApiService.instance.list('/api/taxes/'),
+      ]);
+      setState(() {
+        _orders = results[0].map((e) => PurchaseOrder.fromJson(e as Map<String, dynamic>)).toList();
+        _suppliers = results[1].map((e) => Supplier.fromJson(e as Map<String, dynamic>)).toList();
+        _products = results[2].map((e) => Product.fromJson(e as Map<String, dynamic>)).toList();
+        _taxes = results[3].map((e) => Tax.fromJson(e as Map<String, dynamic>)).toList();
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  String _supplierName(int id) {
+    final matches = _suppliers.where((s) => s.id == id);
+    return matches.isEmpty ? 'Supplier #$id' : matches.first.name;
+  }
+
+  Future<void> _create() async {
+    final result = await openPurchaseOrderForm(context, existing: null, suppliers: _suppliers, products: _products, taxes: _taxes);
+    if (result == null) return;
+    try {
+      await ApiService.instance.create('/api/purchase-orders/', result.toJson());
+      _load();
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  Future<void> _edit(PurchaseOrder order) async {
+    final result = await openPurchaseOrderForm(context, existing: order, suppliers: _suppliers, products: _products, taxes: _taxes);
+    if (result == null) return;
+    try {
+      await ApiService.instance.update('/api/purchase-orders/${order.id}', result.toJson());
+      _load();
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  Future<void> _setStatus(PurchaseOrder order, String status) async {
+    try {
+      final updated = PurchaseOrder(
+        id: order.id,
+        orderNo: order.orderNo,
+        quotationId: order.quotationId,
+        supplierId: order.supplierId,
+        orderDate: order.orderDate,
+        status: status,
+        notes: order.notes,
+        items: order.items,
+      );
+      await ApiService.instance.update('/api/purchase-orders/${order.id}', updated.toJson());
+      _load();
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  Future<void> _delete(PurchaseOrder order) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Purchase Order?'),
+        content: Text('Delete order "${order.orderNo ?? '#${order.id}'}"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ApiService.instance.delete('/api/purchase-orders/${order.id}');
+      _load();
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  void _showError(Object e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(e is ApiException ? e.message : e.toString()), backgroundColor: Colors.red),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_suppliers.isEmpty && !_loading) {
+      return const Center(child: Text('Add a Supplier first, then come back here to raise a Purchase Order.'));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Text('Purchase Orders', style: Theme.of(context).textTheme.titleMedium),
+              const Spacer(),
+              FilledButton.icon(
+                onPressed: _suppliers.isEmpty ? null : _create,
+                icon: const Icon(Icons.add),
+                label: const Text('New Order'),
+              ),
+            ],
+          ),
+        ),
+        if (_error != null)
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text(_error!, style: const TextStyle(color: Colors.red))),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _orders.isEmpty
+                  ? const Center(child: Text('No purchase orders yet.'))
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        itemCount: _orders.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, i) {
+                          final o = _orders[i];
+                          return ListTile(
+                            title: Text('${o.orderNo ?? '#${o.id}'} — ${_supplierName(o.supplierId)}'),
+                            subtitle: Text('${o.orderDate ?? 'no date'} • ${o.items.length} line(s) • Total ₹${o.totalAmount.toStringAsFixed(2)}'
+                                '${o.quotationId != null ? ' • from Supplier Quotation #${o.quotationId}' : ''}'),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                DropdownButton<String>(
+                                  value: o.status,
+                                  underline: const SizedBox(),
+                                  items: _orderStatuses
+                                      .map((s) => DropdownMenuItem(value: s, child: StatusBadge(status: s)))
+                                      .toList(),
+                                  onChanged: (v) {
+                                    if (v != null && v != o.status) _setStatus(o, v);
+                                  },
+                                ),
+                                IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(o), tooltip: 'Edit'),
+                                IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(o), tooltip: 'Delete'),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Public so supplier_quotation_screen.dart can reuse it to build the
+/// "Convert to Purchase Order" pre-filled dialog.
+Future<PurchaseOrder?> openPurchaseOrderForm(
+  BuildContext context, {
+  required PurchaseOrder? existing,
+  required List<Supplier> suppliers,
+  required List<Product> products,
+  required List<Tax> taxes,
+}) {
+  int? supplierId = existing?.supplierId ?? (suppliers.isEmpty ? null : suppliers.first.id);
+  final orderDate = TextEditingController(text: existing?.orderDate ?? DateTime.now().toIso8601String().substring(0, 10));
+  final notes = TextEditingController(text: existing?.notes ?? '');
+  // Backfill each line's tax rate (not a backend field) from the Tax list
+  // so the live total preview is correct immediately -- see
+  // models.dart withTaxRates().
+  List<DocLineItem> items = existing == null ? [] : withTaxRates(existing.items, taxes);
+
+  return showDialog<PurchaseOrder>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(builder: (ctx, setState) {
+      return AlertDialog(
+        title: Text(existing == null ? 'New Purchase Order' : 'Edit Purchase Order'),
+        content: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              DropdownButtonFormField<int>(
+                value: supplierId,
+                decoration: const InputDecoration(labelText: 'Supplier'),
+                items: suppliers.map((s) => DropdownMenuItem(value: s.id, child: Text(s.name))).toList(),
+                onChanged: (v) => setState(() => supplierId = v),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: orderDate, decoration: const InputDecoration(labelText: 'Order Date (YYYY-MM-DD)')),
+              const SizedBox(height: 12),
+              TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notes'), maxLines: 2),
+              const SizedBox(height: 16),
+              DocLineItemsEditor(
+                products: products,
+                taxes: taxes,
+                initialItems: items,
+                onChanged: (updated) => items = updated,
+              ),
+            ]),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              if (supplierId == null || orderDate.text.trim().isEmpty || items.isEmpty) return;
+              Navigator.pop(
+                ctx,
+                PurchaseOrder(
+                  id: existing?.id,
+                  orderNo: existing?.orderNo,
+                  quotationId: existing?.quotationId,
+                  supplierId: supplierId!,
+                  orderDate: orderDate.text.trim(),
+                  status: existing?.status ?? 'Draft',
+                  notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
+                  items: items,
+                ),
+              );
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      );
+    }),
+  );
+}
