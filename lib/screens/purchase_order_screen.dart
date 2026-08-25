@@ -131,6 +131,37 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
     }
   }
 
+  /// Calls POST /api/purchase-orders/{id}/create-goods-receipt (backend/
+  /// app/routers/purchase_orders.py) -- raises a Draft Goods Receipt with
+  /// this order's quantities. Confirming that receipt (on the Goods
+  /// Receipts screen) is what actually moves stock (spec sec. 8).
+  Future<void> _createGoodsReceipt(PurchaseOrder order) async {
+    try {
+      final grnJson = await ApiService.instance.create('/api/purchase-orders/${order.id}/create-goods-receipt', {});
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Goods Receipt ${grnJson['grn_no'] ?? ''} created -- confirm it on the Goods Receipts screen to update stock.')),
+      );
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  /// Calls POST /api/purchase-orders/{id}/create-invoice (backend/app/
+  /// routers/purchase_orders.py) -- raises a Draft Purchase Invoice with
+  /// this order's pricing, independent of Goods Receipt.
+  Future<void> _createInvoice(PurchaseOrder order) async {
+    try {
+      final invJson = await ApiService.instance.create('/api/purchase-orders/${order.id}/create-invoice', {});
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Purchase Invoice ${invJson['invoice_no'] ?? ''} created -- post it on the Purchase Invoices screen.')),
+      );
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
   void _showError(Object e) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(e is ApiException ? e.message : e.toString()), backgroundColor: Colors.red),
@@ -190,6 +221,16 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                                   onChanged: (v) {
                                     if (v != null && v != o.status) _setStatus(o, v);
                                   },
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.move_to_inbox_outlined),
+                                  tooltip: 'Create Goods Receipt',
+                                  onPressed: () => _createGoodsReceipt(o),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.description_outlined),
+                                  tooltip: 'Create Invoice',
+                                  onPressed: () => _createInvoice(o),
                                 ),
                                 IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(o), tooltip: 'Edit'),
                                 IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(o), tooltip: 'Delete'),

@@ -130,6 +130,37 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
     }
   }
 
+  /// Calls POST /api/sales-orders/{id}/create-delivery (backend/app/
+  /// routers/sales_orders.py) -- raises a Draft Delivery with this
+  /// order's quantities. Confirming that delivery (on the Deliveries
+  /// screen) is what actually moves stock (spec sec. 8).
+  Future<void> _createDelivery(SalesOrder order) async {
+    try {
+      final dlvJson = await ApiService.instance.create('/api/sales-orders/${order.id}/create-delivery', {});
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Delivery ${dlvJson['delivery_no'] ?? ''} created -- confirm it on the Deliveries screen to update stock.')),
+      );
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  /// Calls POST /api/sales-orders/{id}/create-invoice (backend/app/
+  /// routers/sales_orders.py) -- raises a Draft Sales Invoice with this
+  /// order's pricing, independent of Delivery.
+  Future<void> _createInvoice(SalesOrder order) async {
+    try {
+      final invJson = await ApiService.instance.create('/api/sales-orders/${order.id}/create-invoice', {});
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sales Invoice ${invJson['invoice_no'] ?? ''} created -- post it on the Sales Invoices screen.')),
+      );
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
   void _showError(Object e) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(e is ApiException ? e.message : e.toString()), backgroundColor: Colors.red),
@@ -189,6 +220,16 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
                                   onChanged: (v) {
                                     if (v != null && v != o.status) _setStatus(o, v);
                                   },
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.local_shipping_outlined),
+                                  tooltip: 'Create Delivery',
+                                  onPressed: () => _createDelivery(o),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.description_outlined),
+                                  tooltip: 'Create Invoice',
+                                  onPressed: () => _createInvoice(o),
                                 ),
                                 IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(o), tooltip: 'Edit'),
                                 IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(o), tooltip: 'Delete'),

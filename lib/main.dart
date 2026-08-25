@@ -12,6 +12,13 @@ import 'screens/sales_order_screen.dart';
 import 'screens/purchase_inquiry_screen.dart';
 import 'screens/supplier_quotation_screen.dart';
 import 'screens/purchase_order_screen.dart';
+import 'screens/goods_receipt_screen.dart';
+import 'screens/purchase_invoice_screen.dart';
+import 'screens/supplier_payment_screen.dart';
+import 'screens/delivery_screen.dart';
+import 'screens/sales_invoice_screen.dart';
+import 'screens/customer_receipt_screen.dart';
+import 'screens/warehouse_screen.dart';
 import 'screens/coming_soon_screen.dart';
 import 'widgets/app_shell.dart';
 
@@ -57,12 +64,9 @@ class MiniErpApp extends StatelessWidget {
             const NavLeaf('Inquiries', Icons.help_outline, _inquiries),
             const NavLeaf('Quotations', Icons.request_quote_outlined, _quotations),
             const NavLeaf('Sales Orders', Icons.receipt_long_outlined, _salesOrders),
-            NavLeaf('Deliveries', Icons.local_shipping_outlined,
-                (ctx) => const ComingSoonScreen(moduleName: 'Deliveries', phaseNote: 'Ships in Phase 3. Confirming a delivery reduces stock (STOCK OUT).')),
-            NavLeaf('Sales Invoices', Icons.description_outlined,
-                (ctx) => const ComingSoonScreen(moduleName: 'Sales Invoices', phaseNote: 'Ships in Phase 3. Posting creates AR Dr / Sales Cr / Tax Payable Cr entries.')),
-            NavLeaf('Receipts', Icons.payments_outlined,
-                (ctx) => const ComingSoonScreen(moduleName: 'Customer Receipts', phaseNote: 'Ships in Phase 3. Posting creates Bank/Cash Dr / AR Cr entries.')),
+            const NavLeaf('Deliveries', Icons.local_shipping_outlined, _deliveries),
+            const NavLeaf('Sales Invoices', Icons.description_outlined, _salesInvoices),
+            const NavLeaf('Receipts', Icons.payments_outlined, _customerReceipts),
           ]),
 
           // Purchase -- Inquiry/Quotation/Order done (Phase 4); Goods Receipt/
@@ -72,12 +76,9 @@ class MiniErpApp extends StatelessWidget {
             const NavLeaf('Inquiries', Icons.help_outline, _purchaseInquiries),
             const NavLeaf('Supplier Quotations', Icons.request_quote_outlined, _supplierQuotations),
             const NavLeaf('Purchase Orders', Icons.assignment_outlined, _purchaseOrders),
-            NavLeaf('Goods Receipts', Icons.move_to_inbox_outlined,
-                (ctx) => const ComingSoonScreen(moduleName: 'Goods Receipts', phaseNote: 'Ships in Phase 5. Confirming a GRN increases stock (STOCK IN).')),
-            NavLeaf('Purchase Invoices', Icons.description_outlined,
-                (ctx) => const ComingSoonScreen(moduleName: 'Purchase Invoices', phaseNote: 'Ships in Phase 5. Posting creates Inventory Dr / Input Tax Dr / AP Cr entries.')),
-            NavLeaf('Payments', Icons.payments_outlined,
-                (ctx) => const ComingSoonScreen(moduleName: 'Supplier Payments', phaseNote: 'Ships in Phase 5. Posting creates AP Dr / Bank-Cash Cr entries.')),
+            const NavLeaf('Goods Receipts', Icons.move_to_inbox_outlined, _goodsReceipts),
+            const NavLeaf('Purchase Invoices', Icons.description_outlined, _purchaseInvoices),
+            const NavLeaf('Payments', Icons.payments_outlined, _supplierPayments),
           ]),
 
           // Inventory -- Phase 3/5.
@@ -86,8 +87,7 @@ class MiniErpApp extends StatelessWidget {
                 (ctx) => const ComingSoonScreen(moduleName: 'Stock Summary', phaseNote: 'Ships alongside Delivery (Phase 3) and Goods Receipt (Phase 5).')),
             NavLeaf('Stock Ledger', Icons.list_alt_outlined,
                 (ctx) => const ComingSoonScreen(moduleName: 'Stock Ledger', phaseNote: 'Every stock movement will reference its source document (spec sec. 8).')),
-            NavLeaf('Warehouses', Icons.store_outlined,
-                (ctx) => const ComingSoonScreen(moduleName: 'Warehouses', phaseNote: 'Ships in Phase 3.')),
+            const NavLeaf('Warehouses', Icons.store_outlined, _warehouses),
             NavLeaf('Stock Transfer', Icons.compare_arrows_outlined,
                 (ctx) => const ComingSoonScreen(moduleName: 'Stock Transfer', phaseNote: 'Ships in Phase 3.')),
             NavLeaf('Stock Adjustment', Icons.tune_outlined,
@@ -159,6 +159,13 @@ class MiniErpApp extends StatelessWidget {
   static Widget _purchaseInquiries(BuildContext ctx) => const PurchaseInquiryScreen();
   static Widget _supplierQuotations(BuildContext ctx) => const SupplierQuotationScreen();
   static Widget _purchaseOrders(BuildContext ctx) => const PurchaseOrderScreen();
+  static Widget _goodsReceipts(BuildContext ctx) => const GoodsReceiptScreen();
+  static Widget _purchaseInvoices(BuildContext ctx) => const PurchaseInvoiceScreen();
+  static Widget _supplierPayments(BuildContext ctx) => const SupplierPaymentScreen();
+  static Widget _deliveries(BuildContext ctx) => const DeliveryScreen();
+  static Widget _salesInvoices(BuildContext ctx) => const SalesInvoiceScreen();
+  static Widget _customerReceipts(BuildContext ctx) => const CustomerReceiptScreen();
+  static Widget _warehouses(BuildContext ctx) => const WarehouseScreen();
   static Widget _settings(BuildContext ctx) => const ComingSoonScreen(
         moduleName: 'Settings',
         phaseNote: 'Company profile, users/roles, numbering sequences, and other config land here as later phases need them.',

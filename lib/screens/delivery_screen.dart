@@ -1,0 +1,345 @@
+import 'package:flutter/material.dart';
+import '../models/models.dart';
+import '../services/api_service.dart';
+import '../widgets/status_badge.dart';
+
+// Includes 'Confirmed' -- confirming a Delivery is what actually posts the
+// STOCK OUT movement (backend/app/routers/deliveries.py). Must be in this
+// list or the status display would fail to reflect the real value.
+const _deliveryStatuses = ['Draft', 'Confirmed', 'Cancelled'];
+
+/// Delivery screen -- the ONLY place stock decreases on the Sales side
+/// (spec sec. 8). A delivery is normally raised from a Sales Order (see
+/// sales_order_screen.dart's "Create Delivery" action, which calls
+/// POST /api/sales-orders/{id}/create-delivery and copies quantities
+/// only -- no pricing), but a standalone "New Delivery" is also available.
+/// Once a delivery is Confirmed its stock movement is posted and it can
+/// no longer be edited or deleted (backend enforces this too).
+class DeliveryScreen extends StatefulWidget {
+  const DeliveryScreen({super.key});
+
+  @override
+  State<DeliveryScreen> createState() => _DeliveryScreenState();
+}
+
+class _DeliveryScreenState extends State<DeliveryScreen> {
+  List<Delivery> _deliveries = [];
+  List<Customer> _customers = [];
+  List<Product> _products = [];
+  List<Warehouse> _warehouses = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final results = await Future.wait([
+        ApiService.instance.list('/api/deliveries/'),
+        ApiService.instance.list('/api/customers/'),
+        ApiService.instance.list('/api/products/'),
+        ApiService.instance.list('/api/warehouses/'),
+      ]);
+      setState(() {
+        _deliveries = results[0].map((e) => Delivery.fromJson(e as Map<String, dynamic>)).toList();
+        _customers = results[1].map((e) => Customer.fromJson(e as Map<String, dynamic>)).toList();
+        _products = results[2].map((e) => Product.fromJson(e as Map<String, dynamic>)).toList();
+        _warehouses = results[3].map((e) => Warehouse.fromJson(e as Map<String, dynamic>)).toList();
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  String _customerName(int id) {
+    final matches = _customers.where((c) => c.id == id);
+    return matches.isEmpty ? 'Customer #$id' : matches.first.name;
+  }
+
+  Future<void> _create() async {
+    final result = await _openDeliveryForm(context, null, _customers, _products, _warehouses);
+    if (result == null) return;
+    try {
+      await ApiService.instance.create('/api/deliveries/', result.toJson());
+      _load();
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  Future<void> _edit(Delivery d) async {
+    final result = await _openDeliveryForm(context, d, _customers, _products, _warehouses);
+    if (result == null) return;
+    try {
+      await ApiService.instance.update('/api/deliveries/${d.id}', result.toJson());
+      _load();
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  Future<void> _delete(Delivery d) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Delivery?'),
+        content: Text('Delete delivery "${d.deliveryNo ?? '#${d.id}'}"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ApiService.instance.delete('/api/deliveries/${d.id}');
+      _load();
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  /// Posts one STOCK OUT StockLedger row per line (backend/app/routers/
+  /// deliveries.py's confirm endpoint) and locks the delivery.
+  Future<void> _confirm(Delivery d) async {
+    try {
+      await ApiService.instance.create('/api/deliveries/${d.id}/confirm', {});
+      _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Delivery confirmed -- stock updated.')),
+      );
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  void _showError(Object e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(e is ApiException ? e.message : e.toString()), backgroundColor: Colors.red),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_customers.isEmpty && !_loading) {
+      return const Center(child: Text('Add a Customer first, then come back here to record a Delivery.'));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Text('Deliveries', style: Theme.of(context).textTheme.titleMedium),
+              const Spacer(),
+              FilledButton.icon(
+                onPressed: _customers.isEmpty ? null : _create,
+                icon: const Icon(Icons.add),
+                label: const Text('New Delivery'),
+              ),
+            ],
+          ),
+        ),
+        if (_error != null)
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text(_error!, style: const TextStyle(color: Colors.red))),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _deliveries.isEmpty
+                  ? const Center(child: Text('No deliveries yet.'))
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        itemCount: _deliveries.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, i) {
+                          final d = _deliveries[i];
+                          return ListTile(
+                            title: Text('${d.deliveryNo ?? '#${d.id}'} — ${_customerName(d.customerId)}'),
+                            subtitle: Text('${d.deliveryDate ?? 'no date'} • ${d.items.length} line(s)'
+                                '${d.salesOrderId != null ? ' • from Sales Order #${d.salesOrderId}' : ''}'),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                StatusBadge(status: d.status),
+                                const SizedBox(width: 8),
+                                if (d.status == 'Draft')
+                                  OutlinedButton.icon(
+                                    onPressed: () => _confirm(d),
+                                    icon: const Icon(Icons.local_shipping_outlined, size: 18),
+                                    label: const Text('Confirm'),
+                                  ),
+                                if (d.status != 'Confirmed') ...[
+                                  IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(d), tooltip: 'Edit'),
+                                  IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(d), tooltip: 'Delete'),
+                                ],
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+        ),
+      ],
+    );
+  }
+}
+
+Future<Delivery?> _openDeliveryForm(
+  BuildContext context,
+  Delivery? existing,
+  List<Customer> customers,
+  List<Product> products,
+  List<Warehouse> warehouses,
+) {
+  int? customerId = existing?.customerId ?? (customers.isEmpty ? null : customers.first.id);
+  int? warehouseId = existing?.warehouseId ?? (warehouses.isEmpty ? null : warehouses.first.id);
+  final deliveryDate = TextEditingController(text: existing?.deliveryDate ?? DateTime.now().toIso8601String().substring(0, 10));
+  final notes = TextEditingController(text: existing?.notes ?? '');
+  List<InquiryItem> items = existing?.items.map((e) => InquiryItem(
+        id: e.id,
+        productId: e.productId,
+        quantity: e.quantity,
+        remarks: e.remarks,
+      )).toList() ?? [];
+  final qtyCtrls = items.map((e) => TextEditingController(text: e.quantity.toString())).toList();
+
+  return showDialog<Delivery>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(builder: (ctx, setState) {
+      return AlertDialog(
+        title: Text(existing == null ? 'New Delivery' : 'Edit Delivery'),
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              DropdownButtonFormField<int>(
+                value: customerId,
+                decoration: const InputDecoration(labelText: 'Customer'),
+                items: customers.map((c) => DropdownMenuItem(value: c.id, child: Text(c.name))).toList(),
+                onChanged: (v) => setState(() => customerId = v),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int?>(
+                value: warehouseId,
+                decoration: const InputDecoration(labelText: 'Warehouse (optional)'),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('Unassigned')),
+                  ...warehouses.map((w) => DropdownMenuItem(value: w.id, child: Text(w.name))),
+                ],
+                onChanged: (v) => setState(() => warehouseId = v),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: deliveryDate, decoration: const InputDecoration(labelText: 'Delivery Date (YYYY-MM-DD)')),
+              const SizedBox(height: 12),
+              TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notes'), maxLines: 2),
+              const SizedBox(height: 16),
+              Row(children: [
+                Text('What is going out?', style: Theme.of(ctx).textTheme.titleSmall),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: products.isEmpty
+                      ? null
+                      : () => setState(() {
+                            final item = InquiryItem();
+                            items.add(item);
+                            qtyCtrls.add(TextEditingController(text: item.quantity.toString()));
+                          }),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Line'),
+                ),
+              ]),
+              if (items.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Text('No lines yet. Add at least one product being delivered.'),
+                ),
+              for (int i = 0; i < items.length; i++)
+                Padding(
+                  key: ValueKey('dlv-line-$i-${items[i].hashCode}'),
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: DropdownButtonFormField<int>(
+                          value: items[i].productId,
+                          isExpanded: true,
+                          decoration: const InputDecoration(labelText: 'Product', isDense: true),
+                          items: [
+                            ...products.map((p) => DropdownMenuItem(value: p.id, child: Text('${p.name} [${p.productCode}]', overflow: TextOverflow.ellipsis))),
+                            if (items[i].productId != null && products.every((p) => p.id != items[i].productId))
+                              DropdownMenuItem(value: items[i].productId, child: Text('Unknown product #${items[i].productId}')),
+                          ],
+                          onChanged: (v) => setState(() => items[i].productId = v),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextFormField(
+                          controller: qtyCtrls[i],
+                          decoration: const InputDecoration(labelText: 'Qty', isDense: true),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (v) => items[i].quantity = double.tryParse(v) ?? 0,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () => setState(() {
+                          items.removeAt(i);
+                          qtyCtrls.removeAt(i).dispose();
+                        }),
+                      ),
+                    ],
+                  ),
+                ),
+            ]),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              if (customerId == null || deliveryDate.text.trim().isEmpty || items.isEmpty) return;
+              Navigator.pop(
+                ctx,
+                Delivery(
+                  id: existing?.id,
+                  deliveryNo: existing?.deliveryNo,
+                  salesOrderId: existing?.salesOrderId,
+                  customerId: customerId!,
+                  warehouseId: warehouseId,
+                  deliveryDate: deliveryDate.text.trim(),
+                  status: existing?.status ?? 'Draft',
+                  notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
+                  items: items,
+                ),
+              );
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      );
+    }),
+  );
+}

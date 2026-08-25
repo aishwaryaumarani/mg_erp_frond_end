@@ -1,0 +1,284 @@
+import 'package:flutter/material.dart';
+import '../models/models.dart';
+import '../services/api_service.dart';
+import '../widgets/doc_items_editor.dart';
+import '../widgets/status_badge.dart';
+
+// 'PartiallyPaid'/'Paid' are set automatically once Customer Receipts are
+// recorded against this invoice (backend/app/routers/customer_receipts.py)
+// -- must be in this list or the status display would break.
+const _salesInvoiceStatuses = ['Draft', 'Posted', 'PartiallyPaid', 'Paid', 'Cancelled'];
+
+/// Sales Invoice screen -- normally raised from a Sales Order (see
+/// sales_order_screen.dart's "Create Invoice" action, which calls
+/// POST /api/sales-orders/{id}/create-invoice and copies pricing as-is),
+/// independent of Delivery since billing and shipping don't always land
+/// together. A standalone "New Invoice" is also available. "Post" locks
+/// the line items and posts AR Dr / Sales Cr / Output Tax Cr (spec sec.
+/// 10). Once Posted, collect it from the Receipts screen.
+class SalesInvoiceScreen extends StatefulWidget {
+  const SalesInvoiceScreen({super.key});
+
+  @override
+  State<SalesInvoiceScreen> createState() => _SalesInvoiceScreenState();
+}
+
+class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
+  List<SalesInvoice> _invoices = [];
+  List<Customer> _customers = [];
+  List<Product> _products = [];
+  List<Tax> _taxes = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final results = await Future.wait([
+        ApiService.instance.list('/api/sales-invoices/'),
+        ApiService.instance.list('/api/customers/'),
+        ApiService.instance.list('/api/products/'),
+        ApiService.instance.list('/api/taxes/'),
+      ]);
+      setState(() {
+        _invoices = results[0].map((e) => SalesInvoice.fromJson(e as Map<String, dynamic>)).toList();
+        _customers = results[1].map((e) => Customer.fromJson(e as Map<String, dynamic>)).toList();
+        _products = results[2].map((e) => Product.fromJson(e as Map<String, dynamic>)).toList();
+        _taxes = results[3].map((e) => Tax.fromJson(e as Map<String, dynamic>)).toList();
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  String _customerName(int id) {
+    final matches = _customers.where((c) => c.id == id);
+    return matches.isEmpty ? 'Customer #$id' : matches.first.name;
+  }
+
+  Future<void> _create() async {
+    final result = await openSalesInvoiceForm(context, existing: null, customers: _customers, products: _products, taxes: _taxes);
+    if (result == null) return;
+    try {
+      await ApiService.instance.create('/api/sales-invoices/', result.toJson());
+      _load();
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  Future<void> _edit(SalesInvoice inv) async {
+    final result = await openSalesInvoiceForm(context, existing: inv, customers: _customers, products: _products, taxes: _taxes);
+    if (result == null) return;
+    try {
+      await ApiService.instance.update('/api/sales-invoices/${inv.id}', result.toJson());
+      _load();
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  Future<void> _delete(SalesInvoice inv) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Sales Invoice?'),
+        content: Text('Delete invoice "${inv.invoiceNo ?? '#${inv.id}'}"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ApiService.instance.delete('/api/sales-invoices/${inv.id}');
+      _load();
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  /// Posts AR Dr / Sales Cr / Output Tax Cr and locks the invoice
+  /// (backend/app/routers/sales_invoices.py's post endpoint).
+  Future<void> _post(SalesInvoice inv) async {
+    try {
+      await ApiService.instance.create('/api/sales-invoices/${inv.id}/post', {});
+      _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sales invoice posted.')),
+      );
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  void _showError(Object e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(e is ApiException ? e.message : e.toString()), backgroundColor: Colors.red),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_customers.isEmpty && !_loading) {
+      return const Center(child: Text('Add a Customer first, then come back here to raise a Sales Invoice.'));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Text('Sales Invoices', style: Theme.of(context).textTheme.titleMedium),
+              const Spacer(),
+              FilledButton.icon(
+                onPressed: _customers.isEmpty ? null : _create,
+                icon: const Icon(Icons.add),
+                label: const Text('New Invoice'),
+              ),
+            ],
+          ),
+        ),
+        if (_error != null)
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text(_error!, style: const TextStyle(color: Colors.red))),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _invoices.isEmpty
+                  ? const Center(child: Text('No sales invoices yet.'))
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        itemCount: _invoices.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, i) {
+                          final inv = _invoices[i];
+                          return ListTile(
+                            title: Text('${inv.invoiceNo ?? '#${inv.id}'} — ${_customerName(inv.customerId)}'),
+                            subtitle: Text('${inv.invoiceDate ?? 'no date'} • ${inv.items.length} line(s) • Total ₹${inv.totalAmount.toStringAsFixed(2)}'
+                                ' • Outstanding ₹${inv.outstanding.toStringAsFixed(2)}'
+                                '${inv.salesOrderId != null ? ' • from Sales Order #${inv.salesOrderId}' : ''}'),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                StatusBadge(status: inv.status),
+                                const SizedBox(width: 8),
+                                if (inv.status == 'Draft')
+                                  OutlinedButton.icon(
+                                    onPressed: () => _post(inv),
+                                    icon: const Icon(Icons.check_circle_outline, size: 18),
+                                    label: const Text('Post'),
+                                  ),
+                                if (inv.status == 'Draft') ...[
+                                  IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(inv), tooltip: 'Edit'),
+                                  IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(inv), tooltip: 'Delete'),
+                                ],
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Public so sales_order_screen.dart can reuse it to build the "Create
+/// Invoice from Sales Order" flow.
+Future<SalesInvoice?> openSalesInvoiceForm(
+  BuildContext context, {
+  required SalesInvoice? existing,
+  required List<Customer> customers,
+  required List<Product> products,
+  required List<Tax> taxes,
+}) {
+  int? customerId = existing?.customerId ?? (customers.isEmpty ? null : customers.first.id);
+  final invoiceDate = TextEditingController(text: existing?.invoiceDate ?? DateTime.now().toIso8601String().substring(0, 10));
+  final dueDate = TextEditingController(text: existing?.dueDate ?? '');
+  final notes = TextEditingController(text: existing?.notes ?? '');
+  List<DocLineItem> items = existing == null ? [] : withTaxRates(existing.items, taxes);
+
+  return showDialog<SalesInvoice>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(builder: (ctx, setState) {
+      return AlertDialog(
+        title: Text(existing == null ? 'New Sales Invoice' : 'Edit Sales Invoice'),
+        content: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              DropdownButtonFormField<int>(
+                value: customerId,
+                decoration: const InputDecoration(labelText: 'Customer'),
+                items: customers.map((c) => DropdownMenuItem(value: c.id, child: Text(c.name))).toList(),
+                onChanged: (v) => setState(() => customerId = v),
+              ),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: TextField(controller: invoiceDate, decoration: const InputDecoration(labelText: 'Invoice Date (YYYY-MM-DD)'))),
+                const SizedBox(width: 12),
+                Expanded(child: TextField(controller: dueDate, decoration: const InputDecoration(labelText: 'Due Date (YYYY-MM-DD)'))),
+              ]),
+              const SizedBox(height: 12),
+              TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notes'), maxLines: 2),
+              const SizedBox(height: 16),
+              DocLineItemsEditor(
+                products: products,
+                taxes: taxes,
+                initialItems: items,
+                onChanged: (updated) => items = updated,
+              ),
+            ]),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              if (customerId == null || invoiceDate.text.trim().isEmpty || items.isEmpty) return;
+              Navigator.pop(
+                ctx,
+                SalesInvoice(
+                  id: existing?.id,
+                  invoiceNo: existing?.invoiceNo,
+                  salesOrderId: existing?.salesOrderId,
+                  customerId: customerId!,
+                  invoiceDate: invoiceDate.text.trim(),
+                  dueDate: dueDate.text.trim().isEmpty ? null : dueDate.text.trim(),
+                  status: existing?.status ?? 'Draft',
+                  notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
+                  amountPaid: existing?.amountPaid ?? 0,
+                  items: items,
+                ),
+              );
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      );
+    }),
+  );
+}
