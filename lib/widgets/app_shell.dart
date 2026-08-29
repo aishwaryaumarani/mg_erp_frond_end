@@ -22,6 +22,7 @@ class AppShell extends StatefulWidget {
   final List<NavGroup> groups;
   final int initialGroup;
   final int initialLeaf;
+  final List<Widget> actions;
 
   const AppShell({
     super.key,
@@ -29,6 +30,7 @@ class AppShell extends StatefulWidget {
     required this.groups,
     this.initialGroup = 0,
     this.initialLeaf = 0,
+    this.actions = const [],
   });
 
   @override
@@ -136,7 +138,7 @@ class _AppShellState extends State<AppShell> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _TopBar(title: currentLeaf.label),
+                    _TopBar(title: currentLeaf.label, actions: widget.actions),
                     Expanded(child: body),
                   ],
                 ),
@@ -147,7 +149,7 @@ class _AppShellState extends State<AppShell> {
       }
 
       return Scaffold(
-        appBar: AppBar(title: Text(currentLeaf.label)),
+        appBar: AppBar(title: Text(currentLeaf.label), actions: widget.actions),
         drawer: Drawer(child: _buildSidebar(context)),
         body: body,
       );
@@ -157,18 +159,23 @@ class _AppShellState extends State<AppShell> {
 
 class _TopBar extends StatelessWidget {
   final String title;
-  const _TopBar({required this.title});
+  final List<Widget> actions;
+  const _TopBar({required this.title, this.actions = const []});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      alignment: Alignment.centerLeft,
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor)),
       ),
-      child: Text(title, style: Theme.of(context).textTheme.headlineSmall),
+      child: Row(
+        children: [
+          Expanded(child: Text(title, style: Theme.of(context).textTheme.headlineSmall)),
+          ...actions,
+        ],
+      ),
     );
   }
 }

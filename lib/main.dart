@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'screens/login_screen.dart';
+import 'screens/companies_screen.dart';
+import 'screens/users_screen.dart';
+import 'services/auth_service.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/simple_master_screens.dart';
 import 'screens/product_screen.dart';
@@ -22,7 +26,9 @@ import 'screens/warehouse_screen.dart';
 import 'screens/coming_soon_screen.dart';
 import 'widgets/app_shell.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AuthService.instance.loadSession();
   runApp(const MiniErpApp());
 }
 
@@ -38,9 +44,38 @@ class MiniErpApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2563EB)),
         useMaterial3: true,
       ),
-      home: AppShell(
-        title: 'Mini ERP',
-        groups: [
+      home: AnimatedBuilder(
+        animation: AuthService.instance,
+        builder: (context, _) {
+          final auth = AuthService.instance;
+          if (!auth.isLoggedIn) return const LoginScreen();
+          if (auth.isSuperAdmin) return _superAdminShell();
+          return _erpShell(isCompanyAdmin: auth.isCompanyAdmin);
+        },
+      ),
+    );
+  }
+
+  /// Super Admin has no company_id, so none of the business-data screens
+  /// below (Products, Sales, ...) apply to them -- they only manage
+  /// Companies (backend/app/routers/companies.py).
+  static Widget _superAdminShell() {
+    return AppShell(
+      title: 'Companies',
+      actions: [_logoutButton()],
+      groups: [
+        NavGroup('Companies', Icons.business_outlined, [
+          NavLeaf('Companies', Icons.business_outlined, (ctx) => const CompaniesScreen()),
+        ]),
+      ],
+    );
+  }
+
+  static Widget _erpShell({required bool isCompanyAdmin}) {
+    return AppShell(
+      title: 'Dashboard',
+      actions: [_logoutButton()],
+      groups: [
           // Dashboard -- single-leaf group renders as a flat sidebar item.
           const NavGroup('Dashboard', Icons.dashboard_outlined, [
             NavLeaf('Dashboard', Icons.dashboard_outlined, _dashboard),
@@ -138,7 +173,23 @@ class MiniErpApp extends StatelessWidget {
           const NavGroup('Settings', Icons.settings_outlined, [
             NavLeaf('Settings', Icons.settings_outlined, _settings),
           ]),
+
+          // Team -- Company Admin only (backend/app/routers/users.py
+          // restricts POST/GET /api/users to role=company_admin).
+          if (isCompanyAdmin)
+            NavGroup('Team', Icons.group_outlined, [
+              NavLeaf('Team', Icons.group_outlined, (ctx) => const UsersScreen()),
+            ]),
         ],
+      );
+  }
+
+  static Widget _logoutButton() {
+    return Builder(
+      builder: (context) => IconButton(
+        icon: const Icon(Icons.logout),
+        tooltip: 'Sign out${AuthService.instance.fullName != null ? ' (${AuthService.instance.fullName})' : ''}',
+        onPressed: () => AuthService.instance.logout(),
       ),
     );
   }

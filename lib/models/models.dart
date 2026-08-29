@@ -1,3 +1,53 @@
+// ---------------------------------------------------------------------------
+// Auth / tenancy: Company (Super Admin's onboarding list) and AppUser
+// (a Company Admin's own-company user list). Mirrors
+// backend/app/schemas/auth.py's CompanyOut/UserOut 1:1. Named AppUser to
+// avoid clashing with Flutter/other packages' own `User` types.
+// ---------------------------------------------------------------------------
+
+class CompanyModel {
+  final int id;
+  String name;
+  String status; // Active | Suspended
+  final String createdAt;
+
+  CompanyModel({required this.id, required this.name, required this.status, required this.createdAt});
+
+  factory CompanyModel.fromJson(Map<String, dynamic> j) => CompanyModel(
+        id: j['id'],
+        name: j['name'],
+        status: j['status'] ?? 'Active',
+        createdAt: j['created_at'] ?? '',
+      );
+}
+
+class AppUser {
+  final int id;
+  final int? companyId;
+  String fullName;
+  String email;
+  String role; // super_admin | company_admin | user
+  String status; // Active | Suspended
+
+  AppUser({
+    required this.id,
+    this.companyId,
+    required this.fullName,
+    required this.email,
+    required this.role,
+    required this.status,
+  });
+
+  factory AppUser.fromJson(Map<String, dynamic> j) => AppUser(
+        id: j['id'],
+        companyId: j['company_id'],
+        fullName: j['full_name'],
+        email: j['email'],
+        role: j['role'],
+        status: j['status'] ?? 'Active',
+      );
+}
+
 // Data models for Phase 1: Category, Brand, Unit, Tax, Product,
 // PriceList, Customer, Supplier. Each mirrors the corresponding
 // Pydantic schema in the backend 1:1 so `fromJson`/`toJson` stay a
