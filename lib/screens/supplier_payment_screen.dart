@@ -120,9 +120,6 @@ class _SupplierPaymentScreenState extends State<SupplierPaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_suppliers.isEmpty && !_loading) {
-      return const Center(child: Text('Add a Supplier first, then come back here to record a Payment.'));
-    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -133,7 +130,7 @@ class _SupplierPaymentScreenState extends State<SupplierPaymentScreen> {
               Text('Supplier Payments', style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
               FilledButton.icon(
-                onPressed: _suppliers.isEmpty ? null : _create,
+                onPressed: _create,
                 icon: const Icon(Icons.add),
                 label: const Text('New Payment'),
               ),

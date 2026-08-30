@@ -19,11 +19,13 @@ class WarehouseScreen extends StatelessWidget {
       titleOf: (w) => w.name,
       subtitleOf: (w) => w.code != null ? 'Code: ${w.code}' : (w.address ?? ''),
       statusOf: (w) => w.status,
-      openForm: _openForm,
+      openForm: openForm,
     );
   }
 
-  static Future<Warehouse?> _openForm(BuildContext context, Warehouse? existing) {
+  /// Public so quick_add.dart can reopen this same dialog inline from a
+  /// Warehouse dropdown in Delivery / Goods Receipt.
+  static Future<Warehouse?> openForm(BuildContext context, Warehouse? existing) {
     final nameCtrl = TextEditingController(text: existing?.name ?? '');
     final codeCtrl = TextEditingController(text: existing?.code ?? '');
     final addressCtrl = TextEditingController(text: existing?.address ?? '');

@@ -23,8 +23,13 @@ import 'screens/delivery_screen.dart';
 import 'screens/sales_invoice_screen.dart';
 import 'screens/customer_receipt_screen.dart';
 import 'screens/warehouse_screen.dart';
+import 'screens/stock_screen.dart';
+import 'screens/stock_ledger_screen.dart';
+import 'screens/stock_adjustment_screen.dart';
+import 'screens/task_screen.dart';
 import 'screens/coming_soon_screen.dart';
 import 'widgets/app_shell.dart';
+import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,12 +43,9 @@ class MiniErpApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Mini ERP',
+      title: 'MG Chemicals',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2563EB)),
-        useMaterial3: true,
-      ),
+      theme: buildAppTheme(),
       home: AnimatedBuilder(
         animation: AuthService.instance,
         builder: (context, _) {
@@ -116,17 +118,27 @@ class MiniErpApp extends StatelessWidget {
             const NavLeaf('Payments', Icons.payments_outlined, _supplierPayments),
           ]),
 
-          // Inventory -- Phase 3/5.
+          // Inventory -- Phase 3/5. Stock is derived from the append-only
+          // StockLedger; Goods Receipt (IN), Delivery (OUT) and Stock
+          // Adjustment are the only things that move it (spec sec. 8).
           NavGroup('Inventory', Icons.warehouse_outlined, [
-            NavLeaf('Stock', Icons.inventory_outlined,
-                (ctx) => const ComingSoonScreen(moduleName: 'Stock Summary', phaseNote: 'Ships alongside Delivery (Phase 3) and Goods Receipt (Phase 5).')),
-            NavLeaf('Stock Ledger', Icons.list_alt_outlined,
-                (ctx) => const ComingSoonScreen(moduleName: 'Stock Ledger', phaseNote: 'Every stock movement will reference its source document (spec sec. 8).')),
+            const NavLeaf('Stock', Icons.inventory_outlined, _stock),
+            const NavLeaf('Stock Ledger', Icons.list_alt_outlined, _stockLedger),
             const NavLeaf('Warehouses', Icons.store_outlined, _warehouses),
+            const NavLeaf('Stock Adjustment', Icons.tune_outlined, _stockAdjustment),
+            // Still a placeholder -- there is no transfer endpoint yet;
+            // moving stock between warehouses would need a paired
+            // OUT/IN posting the backend doesn't expose.
             NavLeaf('Stock Transfer', Icons.compare_arrows_outlined,
-                (ctx) => const ComingSoonScreen(moduleName: 'Stock Transfer', phaseNote: 'Ships in Phase 3.')),
-            NavLeaf('Stock Adjustment', Icons.tune_outlined,
-                (ctx) => const ComingSoonScreen(moduleName: 'Stock Adjustment', phaseNote: 'Ships in Phase 3.')),
+                (ctx) => const ComingSoonScreen(moduleName: 'Stock Transfer', phaseNote: 'Not yet available in the API — needs a paired OUT/IN movement endpoint.')),
+          ]),
+
+          // Tasks & Reminders -- follow-up calls, payment reminders and
+          // to-do checklists. Reminders are polled, not pushed: the
+          // backend exposes due-today/overdue/upcoming windows and this
+          // screen reads them (backend/app/routers/tasks.py).
+          const NavGroup('Tasks', Icons.task_alt_outlined, [
+            NavLeaf('Tasks & Reminders', Icons.task_alt_outlined, _tasks),
           ]),
 
           // Accounts -- Phase 6.
@@ -217,6 +229,10 @@ class MiniErpApp extends StatelessWidget {
   static Widget _salesInvoices(BuildContext ctx) => const SalesInvoiceScreen();
   static Widget _customerReceipts(BuildContext ctx) => const CustomerReceiptScreen();
   static Widget _warehouses(BuildContext ctx) => const WarehouseScreen();
+  static Widget _stock(BuildContext ctx) => const StockScreen();
+  static Widget _stockLedger(BuildContext ctx) => const StockLedgerScreen();
+  static Widget _stockAdjustment(BuildContext ctx) => const StockAdjustmentScreen();
+  static Widget _tasks(BuildContext ctx) => const TaskScreen();
   static Widget _settings(BuildContext ctx) => const ComingSoonScreen(
         moduleName: 'Settings',
         phaseNote: 'Company profile, users/roles, numbering sequences, and other config land here as later phases need them.',

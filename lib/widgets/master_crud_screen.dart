@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'status_badge.dart';
+import '../theme/app_theme.dart';
 
 /// Generic list + search + create/edit/delete screen shared by every
 /// Phase-1 master (Categories, Brands, Units, Taxes, Customers,
@@ -100,7 +101,7 @@ class _MasterCrudScreenState<T> extends State<MasterCrudScreen<T>> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.rose),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Delete'),
           ),
@@ -119,7 +120,10 @@ class _MasterCrudScreenState<T> extends State<MasterCrudScreen<T>> {
 
   void _showError(Object e) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(e is ApiException ? e.message : e.toString()), backgroundColor: Colors.red),
+      SnackBar(
+        content: Text(e is ApiException ? e.message : e.toString()),
+        backgroundColor: AppColors.rose,
+      ),
     );
   }
 
@@ -138,9 +142,8 @@ class _MasterCrudScreenState<T> extends State<MasterCrudScreen<T>> {
                     controller: _searchCtrl,
                     decoration: InputDecoration(
                       hintText: 'Search ${widget.entityName.toLowerCase()}s...',
-                      prefixIcon: const Icon(Icons.search),
+                      prefixIcon: const Icon(Icons.search, color: AppColors.brand),
                       isDense: true,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                     onSubmitted: (_) => _load(),
                   ),
@@ -156,8 +159,18 @@ class _MasterCrudScreenState<T> extends State<MasterCrudScreen<T>> {
         ),
         if (_error != null)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(_error!, style: const TextStyle(color: Colors.red)),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: AppColors.tintedBox(AppColors.rose),
+              child: Row(
+                children: [
+                  const Icon(Icons.error_outline, color: AppColors.rose, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(_error!, style: const TextStyle(color: AppColors.rose))),
+                ],
+              ),
+            ),
           ),
         Expanded(
           child: _loading
@@ -172,13 +185,45 @@ class _MasterCrudScreenState<T> extends State<MasterCrudScreen<T>> {
                       child: ListView.separated(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         itemCount: _items.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, i) {
                           final item = _items[i];
-                          return ListTile(
-                            title: Text(widget.titleOf(item)),
+                          // Row accent rotates through the palette so a
+                          // long list of otherwise identical rows is
+                          // still easy to keep your place in.
+                          final accent = AppColors.accentAt(i);
+                          final title = widget.titleOf(item);
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: accent.withOpacity(0.20)),
+                            ),
+                            child: ListTile(
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            leading: Container(
+                              width: 40,
+                              height: 40,
+                              alignment: Alignment.center,
+                              decoration: AppColors.tintedBox(accent, radius: 10, border: false),
+                              child: Text(
+                                title.isEmpty ? '?' : title.characters.first.toUpperCase(),
+                                style: TextStyle(
+                                  color: accent,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                            title: Text(
+                              title,
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
                             subtitle: widget.subtitleOf != null
-                                ? Text(widget.subtitleOf!(item))
+                                ? Text(
+                                    widget.subtitleOf!(item),
+                                    style: const TextStyle(color: AppColors.slate),
+                                  )
                                 : null,
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -188,16 +233,17 @@ class _MasterCrudScreenState<T> extends State<MasterCrudScreen<T>> {
                                   const SizedBox(width: 12),
                                 ],
                                 IconButton(
-                                  icon: const Icon(Icons.edit_outlined),
+                                  icon: const Icon(Icons.edit_outlined, color: AppColors.brand),
                                   onPressed: () => _edit(item),
                                   tooltip: 'Edit',
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.delete_outline),
+                                  icon: const Icon(Icons.delete_outline, color: AppColors.rose),
                                   onPressed: () => _delete(item),
                                   tooltip: 'Delete',
                                 ),
                               ],
+                            ),
                             ),
                           );
                         },

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
 import '../widgets/doc_items_editor.dart';
+import '../widgets/quick_add.dart';
 import '../widgets/status_badge.dart';
 
 const _orderStatuses = ['Draft', 'Sent', 'Confirmed', 'Cancelled'];
@@ -170,9 +171,6 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_suppliers.isEmpty && !_loading) {
-      return const Center(child: Text('Add a Supplier first, then come back here to raise a Purchase Order.'));
-    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -183,7 +181,7 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
               Text('Purchase Orders', style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
               FilledButton.icon(
-                onPressed: _suppliers.isEmpty ? null : _create,
+                onPressed: _create,
                 icon: const Icon(Icons.add),
                 label: const Text('New Order'),
               ),
@@ -272,10 +270,21 @@ Future<PurchaseOrder?> openPurchaseOrderForm(
           width: 560,
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              DropdownButtonFormField<int>(
+              QuickAddDropdown<Supplier>(
+                label: 'Supplier',
                 value: supplierId,
-                decoration: const InputDecoration(labelText: 'Supplier'),
-                items: suppliers.map((s) => DropdownMenuItem(value: s.id, child: Text(s.name))).toList(),
+                options: suppliers,
+                idOf: (s) => s.id,
+                labelOf: (s) => '${s.name} (${s.supplierCode})',
+                addNewLabel: 'Add New Supplier',
+                allowUnknownValue: true,
+                onCreate: quickAddSupplier,
+                // `suppliers` is the calling screen's own list, so a
+                // supplier added here survives cancelling this dialog.
+                onCreated: (s) => setState(() {
+                  suppliers.add(s);
+                  supplierId = s.id;
+                }),
                 onChanged: (v) => setState(() => supplierId = v),
               ),
               const SizedBox(height: 12),
@@ -288,6 +297,7 @@ Future<PurchaseOrder?> openPurchaseOrderForm(
                 taxes: taxes,
                 initialItems: items,
                 onChanged: (updated) => items = updated,
+                onProductCreated: products.add,
               ),
             ]),
           ),

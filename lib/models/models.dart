@@ -1210,3 +1210,286 @@ class CustomerReceipt {
         'notes': notes,
       };
 }
+
+// ---------------------------------------------------------------------------
+// Inventory: stock is never a stored column -- it is derived from the
+// append-only StockLedger (backend/app/models/inventory.py). StockBalance
+// mirrors the computed StockBalanceOut/ProductStockOut; StockLedgerEntry
+// mirrors one raw movement row.
+// ---------------------------------------------------------------------------
+
+/// Per-warehouse slice of one product's stock (ProductStockOut.warehouses).
+class WarehouseStock {
+  final int? warehouseId;
+  final String? warehouseName;
+  final double quantityIn;
+  final double quantityOut;
+  final double onHand;
+
+  WarehouseStock({
+    this.warehouseId,
+    this.warehouseName,
+    this.quantityIn = 0,
+    this.quantityOut = 0,
+    this.onHand = 0,
+  });
+
+  factory WarehouseStock.fromJson(Map<String, dynamic> j) => WarehouseStock(
+        warehouseId: j['warehouse_id'],
+        warehouseName: j['warehouse_name'],
+        quantityIn: (j['quantity_in'] ?? 0).toDouble(),
+        quantityOut: (j['quantity_out'] ?? 0).toDouble(),
+        onHand: (j['on_hand'] ?? 0).toDouble(),
+      );
+
+  /// "Unassigned" covers movements posted without a warehouse -- the
+  /// backend keys those under a null warehouse_id rather than dropping them.
+  String get displayName => warehouseName ?? 'Unassigned';
+}
+
+/// One product's on-hand position. Read-only -- there is no endpoint that
+/// writes a balance; stock changes only by posting a movement.
+class StockBalance {
+  final int productId;
+  final String productCode;
+  final String productName;
+  final int? unitId;
+  final int? warehouseId; // echoes the requested filter, null = all warehouses
+  final double quantityIn;
+  final double quantityOut;
+  final double onHand;
+  final double minimumStock;
+  final double reorderLevel;
+  final bool isLowStock;
+  final bool isOutOfStock;
+  final double purchasePrice;
+  final double stockValue;
+  final List<WarehouseStock> warehouses; // only populated by /stock/product/{id}
+
+  StockBalance({
+    required this.productId,
+    required this.productCode,
+    required this.productName,
+    this.unitId,
+    this.warehouseId,
+    this.quantityIn = 0,
+    this.quantityOut = 0,
+    this.onHand = 0,
+    this.minimumStock = 0,
+    this.reorderLevel = 0,
+    this.isLowStock = false,
+    this.isOutOfStock = false,
+    this.purchasePrice = 0,
+    this.stockValue = 0,
+    this.warehouses = const [],
+  });
+
+  factory StockBalance.fromJson(Map<String, dynamic> j) => StockBalance(
+        productId: j['product_id'],
+        productCode: j['product_code'] ?? '',
+        productName: j['product_name'] ?? '',
+        unitId: j['unit_id'],
+        warehouseId: j['warehouse_id'],
+        quantityIn: (j['quantity_in'] ?? 0).toDouble(),
+        quantityOut: (j['quantity_out'] ?? 0).toDouble(),
+        onHand: (j['on_hand'] ?? 0).toDouble(),
+        minimumStock: (j['minimum_stock'] ?? 0).toDouble(),
+        reorderLevel: (j['reorder_level'] ?? 0).toDouble(),
+        isLowStock: j['is_low_stock'] ?? false,
+        isOutOfStock: j['is_out_of_stock'] ?? false,
+        purchasePrice: (j['purchase_price'] ?? 0).toDouble(),
+        stockValue: (j['stock_value'] ?? 0).toDouble(),
+        warehouses: ((j['warehouses'] as List<dynamic>?) ?? [])
+            .map((e) => WarehouseStock.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+
+  /// Drives the coloured pill in the stock list. Out-of-stock wins over
+  /// low-stock, matching the backend's stock_flags().
+  String get stockStatus {
+    if (isOutOfStock) return 'Out of Stock';
+    if (isLowStock) return 'Low Stock';
+    return 'In Stock';
+  }
+}
+
+/// One movement row. Append-only on the backend -- there is no update or
+/// delete, which is why this model has no toJson.
+class StockLedgerEntry {
+  final int id;
+  final int productId;
+  final String? productCode;
+  final String? productName;
+  final int? warehouseId;
+  final String? warehouseName;
+  final String movementType; // IN | OUT
+  final double quantity;
+  final String referenceType; // GoodsReceipt | Delivery | Adjustment
+  final int? referenceId;
+  final String movementDate;
+  final String? notes;
+
+  StockLedgerEntry({
+    required this.id,
+    required this.productId,
+    this.productCode,
+    this.productName,
+    this.warehouseId,
+    this.warehouseName,
+    required this.movementType,
+    required this.quantity,
+    required this.referenceType,
+    this.referenceId,
+    required this.movementDate,
+    this.notes,
+  });
+
+  factory StockLedgerEntry.fromJson(Map<String, dynamic> j) => StockLedgerEntry(
+        id: j['id'],
+        productId: j['product_id'],
+        productCode: j['product_code'],
+        productName: j['product_name'],
+        warehouseId: j['warehouse_id'],
+        warehouseName: j['warehouse_name'],
+        movementType: j['movement_type'] ?? 'IN',
+        quantity: (j['quantity'] ?? 0).toDouble(),
+        referenceType: j['reference_type'] ?? '',
+        referenceId: j['reference_id'],
+        movementDate: j['movement_date'] ?? '',
+        notes: j['notes'],
+      );
+
+  bool get isIn => movementType == 'IN';
+}
+
+// ---------------------------------------------------------------------------
+// Tasks & Reminders: follow-up calls, payment reminders and to-do
+// checklists (backend/app/models/tasks.py). One shape covers all three --
+// they differ only by taskType and by what they point at.
+// ---------------------------------------------------------------------------
+
+const kTaskTypes = ['Follow-up', 'Payment Reminder', 'Call', 'Meeting', 'To-do'];
+const kTaskPriorities = ['Low', 'Medium', 'High', 'Urgent'];
+const kTaskStatuses = ['Pending', 'In Progress', 'Completed', 'Cancelled'];
+
+class TaskChecklistItem {
+  final int? id;
+  final int? taskId;
+  String title;
+  bool isDone;
+  int position;
+
+  TaskChecklistItem({this.id, this.taskId, required this.title, this.isDone = false, this.position = 0});
+
+  factory TaskChecklistItem.fromJson(Map<String, dynamic> j) => TaskChecklistItem(
+        id: j['id'],
+        taskId: j['task_id'],
+        title: j['title'] ?? '',
+        isDone: j['is_done'] ?? false,
+        position: j['position'] ?? 0,
+      );
+
+  Map<String, dynamic> toJson() => {'title': title, 'is_done': isDone, 'position': position};
+}
+
+class TaskModel {
+  final int? id;
+  final String? taskNo; // server-assigned (TSK-0001)
+  String title;
+  String? description;
+  String taskType;
+  String priority;
+  String status;
+  String? dueDate; // YYYY-MM-DD
+  String? reminderDate;
+  int? assignedToId;
+  final String? assignedToName;
+  int? customerId;
+  int? leadId;
+  int? supplierId;
+  final String? partyName; // resolved customer / lead / supplier name
+  String? referenceType;
+  int? referenceId;
+  final String? outcome;
+  final String? completedAt;
+  /// Derived server-side per request, never stored -- a persisted
+  /// "overdue" flag would go stale at midnight.
+  final bool isOverdue;
+  List<TaskChecklistItem> checklist;
+  final int checklistTotal;
+  final int checklistDone;
+
+  TaskModel({
+    this.id,
+    this.taskNo,
+    required this.title,
+    this.description,
+    this.taskType = 'To-do',
+    this.priority = 'Medium',
+    this.status = 'Pending',
+    this.dueDate,
+    this.reminderDate,
+    this.assignedToId,
+    this.assignedToName,
+    this.customerId,
+    this.leadId,
+    this.supplierId,
+    this.partyName,
+    this.referenceType,
+    this.referenceId,
+    this.outcome,
+    this.completedAt,
+    this.isOverdue = false,
+    this.checklist = const [],
+    this.checklistTotal = 0,
+    this.checklistDone = 0,
+  });
+
+  factory TaskModel.fromJson(Map<String, dynamic> j) => TaskModel(
+        id: j['id'],
+        taskNo: j['task_no'],
+        title: j['title'] ?? '',
+        description: j['description'],
+        taskType: j['task_type'] ?? 'To-do',
+        priority: j['priority'] ?? 'Medium',
+        status: j['status'] ?? 'Pending',
+        dueDate: j['due_date'],
+        reminderDate: j['reminder_date'],
+        assignedToId: j['assigned_to_id'],
+        assignedToName: j['assigned_to_name'],
+        customerId: j['customer_id'],
+        leadId: j['lead_id'],
+        supplierId: j['supplier_id'],
+        partyName: j['party_name'],
+        referenceType: j['reference_type'],
+        referenceId: j['reference_id'],
+        outcome: j['outcome'],
+        completedAt: j['completed_at'],
+        isOverdue: j['is_overdue'] ?? false,
+        checklist: ((j['checklist'] as List<dynamic>?) ?? [])
+            .map((e) => TaskChecklistItem.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        checklistTotal: j['checklist_total'] ?? 0,
+        checklistDone: j['checklist_done'] ?? 0,
+      );
+
+  /// [includeChecklist] only on create -- TaskUpdate has no checklist
+  /// field, and sending one to PUT would be silently dropped anyway.
+  Map<String, dynamic> toJson({bool includeChecklist = false}) => {
+        'title': title,
+        'description': description,
+        'task_type': taskType,
+        'priority': priority,
+        'due_date': dueDate,
+        'reminder_date': reminderDate,
+        'assigned_to_id': assignedToId,
+        'customer_id': customerId,
+        'lead_id': leadId,
+        'supplier_id': supplierId,
+        'reference_type': referenceType,
+        'reference_id': referenceId,
+        if (includeChecklist) 'checklist': checklist.map((c) => c.toJson()).toList(),
+      };
+
+  bool get isOpen => status == 'Pending' || status == 'In Progress';
+}

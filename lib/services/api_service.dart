@@ -15,7 +15,7 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
-/// Thin wrapper around the Mini ERP REST API. Every master module
+/// Thin wrapper around the MG Chemicals REST API. Every master module
 /// (Products, Categories, Brands, Units, Taxes, Price Lists,
 /// Customers, Suppliers) is CRUD over a resource path, so this one
 /// class covers all of Phase 1. Later phases (Sales/Purchase/

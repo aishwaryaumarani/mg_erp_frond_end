@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
 import '../widgets/status_badge.dart';
+import '../widgets/quick_add.dart';
 
 // Includes 'Confirmed' -- confirming a Delivery is what actually posts the
 // STOCK OUT movement (backend/app/routers/deliveries.py). Must be in this
@@ -138,9 +139,6 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_customers.isEmpty && !_loading) {
-      return const Center(child: Text('Add a Customer first, then come back here to record a Delivery.'));
-    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -151,7 +149,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
               Text('Deliveries', style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
               FilledButton.icon(
-                onPressed: _customers.isEmpty ? null : _create,
+                onPressed: _create,
                 icon: const Icon(Icons.add),
                 label: const Text('New Delivery'),
               ),
@@ -232,20 +230,38 @@ Future<Delivery?> _openDeliveryForm(
           width: 520,
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              DropdownButtonFormField<int>(
+              QuickAddDropdown<Customer>(
+                label: 'Customer',
                 value: customerId,
-                decoration: const InputDecoration(labelText: 'Customer'),
-                items: customers.map((c) => DropdownMenuItem(value: c.id, child: Text(c.name))).toList(),
+                options: customers,
+                idOf: (c) => c.id,
+                labelOf: (c) => '${c.name} (${c.customerCode})',
+                addNewLabel: 'Add New Customer',
+                allowUnknownValue: true,
+                onCreate: quickAddCustomer,
+                // `customers` is the calling screen's own list, so a
+                // customer added here survives cancelling this dialog.
+                onCreated: (c) => setState(() {
+                  customers.add(c);
+                  customerId = c.id;
+                }),
                 onChanged: (v) => setState(() => customerId = v),
               ),
               const SizedBox(height: 12),
-              DropdownButtonFormField<int?>(
+              QuickAddDropdown<Warehouse>(
+                label: 'Warehouse (optional)',
                 value: warehouseId,
-                decoration: const InputDecoration(labelText: 'Warehouse (optional)'),
-                items: [
-                  const DropdownMenuItem(value: null, child: Text('Unassigned')),
-                  ...warehouses.map((w) => DropdownMenuItem(value: w.id, child: Text(w.name))),
-                ],
+                options: warehouses,
+                idOf: (w) => w.id,
+                labelOf: (w) => w.code == null || w.code!.isEmpty ? w.name : '${w.name} (${w.code})',
+                addNewLabel: 'Add New Warehouse',
+                noneLabel: 'Unassigned',
+                allowUnknownValue: true,
+                onCreate: quickAddWarehouse,
+                onCreated: (w) => setState(() {
+                  warehouses.add(w);
+                  warehouseId = w.id;
+                }),
                 onChanged: (v) => setState(() => warehouseId = v),
               ),
               const SizedBox(height: 12),
@@ -257,13 +273,11 @@ Future<Delivery?> _openDeliveryForm(
                 Text('What is going out?', style: Theme.of(ctx).textTheme.titleSmall),
                 const Spacer(),
                 TextButton.icon(
-                  onPressed: products.isEmpty
-                      ? null
-                      : () => setState(() {
-                            final item = InquiryItem();
-                            items.add(item);
-                            qtyCtrls.add(TextEditingController(text: item.quantity.toString()));
-                          }),
+                  onPressed: () => setState(() {
+                    final item = InquiryItem();
+                    items.add(item);
+                    qtyCtrls.add(TextEditingController(text: item.quantity.toString()));
+                  }),
                   icon: const Icon(Icons.add),
                   label: const Text('Add Line'),
                 ),
@@ -281,15 +295,20 @@ Future<Delivery?> _openDeliveryForm(
                     children: [
                       Expanded(
                         flex: 3,
-                        child: DropdownButtonFormField<int>(
+                        child: QuickAddDropdown<Product>(
+                          label: 'Product',
                           value: items[i].productId,
-                          isExpanded: true,
-                          decoration: const InputDecoration(labelText: 'Product', isDense: true),
-                          items: [
-                            ...products.map((p) => DropdownMenuItem(value: p.id, child: Text('${p.name} [${p.productCode}]', overflow: TextOverflow.ellipsis))),
-                            if (items[i].productId != null && products.every((p) => p.id != items[i].productId))
-                              DropdownMenuItem(value: items[i].productId, child: Text('Unknown product #${items[i].productId}')),
-                          ],
+                          options: products,
+                          idOf: (p) => p.id,
+                          labelOf: (p) => '${p.name} [${p.productCode}]',
+                          addNewLabel: 'Add New Product',
+                          isDense: true,
+                          allowUnknownValue: true,
+                          onCreate: quickAddProduct,
+                          onCreated: (p) => setState(() {
+                            products.add(p);
+                            items[i].productId = p.id;
+                          }),
                           onChanged: (v) => setState(() => items[i].productId = v),
                         ),
                       ),

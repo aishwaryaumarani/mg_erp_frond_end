@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
 import '../widgets/status_badge.dart';
+import '../widgets/quick_add.dart';
 import 'quotation_screen.dart';
 
 const _inquiryStatuses = ['Open', 'Quoted', 'Closed', 'Cancelled'];
@@ -150,9 +151,6 @@ class _InquiryScreenState extends State<InquiryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_customers.isEmpty && !_loading) {
-      return const Center(child: Text('Add a Customer first (or convert a Lead), then come back here to raise an Inquiry.'));
-    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -163,7 +161,7 @@ class _InquiryScreenState extends State<InquiryScreen> {
               Text('Sales Inquiries', style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
               FilledButton.icon(
-                onPressed: _customers.isEmpty ? null : _create,
+                onPressed: _create,
                 icon: const Icon(Icons.add),
                 label: const Text('New Inquiry'),
               ),
@@ -242,10 +240,21 @@ Future<Inquiry?> _openInquiryForm(
           width: 520,
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              DropdownButtonFormField<int>(
+              QuickAddDropdown<Customer>(
+                label: 'Customer',
                 value: customerId,
-                decoration: const InputDecoration(labelText: 'Customer'),
-                items: customers.map((c) => DropdownMenuItem(value: c.id, child: Text(c.name))).toList(),
+                options: customers,
+                idOf: (c) => c.id,
+                labelOf: (c) => '${c.name} (${c.customerCode})',
+                addNewLabel: 'Add New Customer',
+                allowUnknownValue: true,
+                onCreate: quickAddCustomer,
+                // `customers` is the screen's own list, so a customer added
+                // here is still there if the dialog is cancelled.
+                onCreated: (c) => setState(() {
+                  customers.add(c);
+                  customerId = c.id;
+                }),
                 onChanged: (v) => setState(() => customerId = v),
               ),
               const SizedBox(height: 12),
@@ -257,13 +266,11 @@ Future<Inquiry?> _openInquiryForm(
                 Text('What are they asking about?', style: Theme.of(ctx).textTheme.titleSmall),
                 const Spacer(),
                 TextButton.icon(
-                  onPressed: products.isEmpty
-                      ? null
-                      : () => setState(() {
-                            final item = InquiryItem();
-                            items.add(item);
-                            qtyCtrls.add(TextEditingController(text: item.quantity.toString()));
-                          }),
+                  onPressed: () => setState(() {
+                    final item = InquiryItem();
+                    items.add(item);
+                    qtyCtrls.add(TextEditingController(text: item.quantity.toString()));
+                  }),
                   icon: const Icon(Icons.add),
                   label: const Text('Add Line'),
                 ),
@@ -281,15 +288,20 @@ Future<Inquiry?> _openInquiryForm(
                     children: [
                       Expanded(
                         flex: 3,
-                        child: DropdownButtonFormField<int>(
+                        child: QuickAddDropdown<Product>(
+                          label: 'Product',
                           value: items[i].productId,
-                          isExpanded: true,
-                          decoration: const InputDecoration(labelText: 'Product', isDense: true),
-                          items: [
-                            ...products.map((p) => DropdownMenuItem(value: p.id, child: Text('${p.name} [${p.productCode}]', overflow: TextOverflow.ellipsis))),
-                            if (items[i].productId != null && products.every((p) => p.id != items[i].productId))
-                              DropdownMenuItem(value: items[i].productId, child: Text('Unknown product #${items[i].productId}')),
-                          ],
+                          options: products,
+                          idOf: (p) => p.id,
+                          labelOf: (p) => '${p.name} [${p.productCode}]',
+                          addNewLabel: 'Add New Product',
+                          isDense: true,
+                          allowUnknownValue: true,
+                          onCreate: quickAddProduct,
+                          onCreated: (p) => setState(() {
+                            products.add(p);
+                            items[i].productId = p.id;
+                          }),
                           onChanged: (v) => setState(() => items[i].productId = v),
                         ),
                       ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
 import '../widgets/status_badge.dart';
+import '../widgets/quick_add.dart';
 import 'supplier_quotation_screen.dart';
 
 const _inquiryStatuses = ['Open', 'Quoted', 'Closed', 'Cancelled'];
@@ -150,9 +151,6 @@ class _PurchaseInquiryScreenState extends State<PurchaseInquiryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_suppliers.isEmpty && !_loading) {
-      return const Center(child: Text('Add a Supplier first, then come back here to raise a Purchase Inquiry.'));
-    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -163,7 +161,7 @@ class _PurchaseInquiryScreenState extends State<PurchaseInquiryScreen> {
               Text('Purchase Inquiries', style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
               FilledButton.icon(
-                onPressed: _suppliers.isEmpty ? null : _create,
+                onPressed: _create,
                 icon: const Icon(Icons.add),
                 label: const Text('New Inquiry'),
               ),
@@ -242,10 +240,21 @@ Future<PurchaseInquiry?> _openPurchaseInquiryForm(
           width: 520,
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              DropdownButtonFormField<int>(
+              QuickAddDropdown<Supplier>(
+                label: 'Supplier',
                 value: supplierId,
-                decoration: const InputDecoration(labelText: 'Supplier'),
-                items: suppliers.map((s) => DropdownMenuItem(value: s.id, child: Text(s.name))).toList(),
+                options: suppliers,
+                idOf: (s) => s.id,
+                labelOf: (s) => '${s.name} (${s.supplierCode})',
+                addNewLabel: 'Add New Supplier',
+                allowUnknownValue: true,
+                onCreate: quickAddSupplier,
+                // `suppliers` is the calling screen's own list, so a
+                // supplier added here survives cancelling this dialog.
+                onCreated: (s) => setState(() {
+                  suppliers.add(s);
+                  supplierId = s.id;
+                }),
                 onChanged: (v) => setState(() => supplierId = v),
               ),
               const SizedBox(height: 12),
@@ -257,13 +266,11 @@ Future<PurchaseInquiry?> _openPurchaseInquiryForm(
                 Text('What are you asking the supplier to price?', style: Theme.of(ctx).textTheme.titleSmall),
                 const Spacer(),
                 TextButton.icon(
-                  onPressed: products.isEmpty
-                      ? null
-                      : () => setState(() {
-                            final item = InquiryItem();
-                            items.add(item);
-                            qtyCtrls.add(TextEditingController(text: item.quantity.toString()));
-                          }),
+                  onPressed: () => setState(() {
+                    final item = InquiryItem();
+                    items.add(item);
+                    qtyCtrls.add(TextEditingController(text: item.quantity.toString()));
+                  }),
                   icon: const Icon(Icons.add),
                   label: const Text('Add Line'),
                 ),
@@ -281,15 +288,20 @@ Future<PurchaseInquiry?> _openPurchaseInquiryForm(
                     children: [
                       Expanded(
                         flex: 3,
-                        child: DropdownButtonFormField<int>(
+                        child: QuickAddDropdown<Product>(
+                          label: 'Product',
                           value: items[i].productId,
-                          isExpanded: true,
-                          decoration: const InputDecoration(labelText: 'Product', isDense: true),
-                          items: [
-                            ...products.map((p) => DropdownMenuItem(value: p.id, child: Text('${p.name} [${p.productCode}]', overflow: TextOverflow.ellipsis))),
-                            if (items[i].productId != null && products.every((p) => p.id != items[i].productId))
-                              DropdownMenuItem(value: items[i].productId, child: Text('Unknown product #${items[i].productId}')),
-                          ],
+                          options: products,
+                          idOf: (p) => p.id,
+                          labelOf: (p) => '${p.name} [${p.productCode}]',
+                          addNewLabel: 'Add New Product',
+                          isDense: true,
+                          allowUnknownValue: true,
+                          onCreate: quickAddProduct,
+                          onCreated: (p) => setState(() {
+                            products.add(p);
+                            items[i].productId = p.id;
+                          }),
                           onChanged: (v) => setState(() => items[i].productId = v),
                         ),
                       ),

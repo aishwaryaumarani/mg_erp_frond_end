@@ -22,11 +22,13 @@ class CustomerScreen extends StatelessWidget {
         'Outstanding: reflects once Sales module is live',
       ].whereType<String>().join(' • '),
       statusOf: (c) => c.status,
-      openForm: _openForm,
+      openForm: openForm,
     );
   }
 
-  static Future<Customer?> _openForm(BuildContext context, Customer? existing) {
+  /// Public so quick_add.dart can reopen this same dialog inline from a
+  /// Customer dropdown in the Sales forms.
+  static Future<Customer?> openForm(BuildContext context, Customer? existing) {
     final code = TextEditingController(text: existing?.customerCode ?? '');
     final name = TextEditingController(text: existing?.name ?? '');
     final company = TextEditingController(text: existing?.companyName ?? '');

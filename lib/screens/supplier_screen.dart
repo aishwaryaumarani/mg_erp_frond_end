@@ -22,11 +22,13 @@ class SupplierScreen extends StatelessWidget {
         'Outstanding: reflects once Purchase module is live',
       ].whereType<String>().join(' • '),
       statusOf: (s) => s.status,
-      openForm: _openForm,
+      openForm: openForm,
     );
   }
 
-  static Future<Supplier?> _openForm(BuildContext context, Supplier? existing) {
+  /// Public so quick_add.dart can reopen this same dialog inline from a
+  /// Supplier dropdown in the Purchase forms.
+  static Future<Supplier?> openForm(BuildContext context, Supplier? existing) {
     final code = TextEditingController(text: existing?.supplierCode ?? '');
     final name = TextEditingController(text: existing?.name ?? '');
     final company = TextEditingController(text: existing?.companyName ?? '');

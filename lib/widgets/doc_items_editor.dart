@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
+import 'quick_add.dart';
 
 /// Editable line-items table shared by the Quotation and Sales Order forms.
 /// Each row picks a Product (which seeds unit price from the product's
@@ -24,12 +25,18 @@ class DocLineItemsEditor extends StatefulWidget {
   final List<DocLineItem> initialItems;
   final ValueChanged<List<DocLineItem>> onChanged;
 
+  /// Fired when a Product is created from a row's "+ Add New Product"
+  /// option, so the enclosing screen can keep its own product list in
+  /// step without a round-trip.
+  final ValueChanged<Product>? onProductCreated;
+
   const DocLineItemsEditor({
     super.key,
     required this.products,
     required this.taxes,
     required this.initialItems,
     required this.onChanged,
+    this.onProductCreated,
   });
 
   @override
@@ -38,6 +45,10 @@ class DocLineItemsEditor extends StatefulWidget {
 
 class _DocLineItemsEditorState extends State<DocLineItemsEditor> {
   late List<DocLineItem> _items;
+  /// Local copy so a Product added from inside a row shows up in every
+  /// row's dropdown straight away (the caller's list is updated too, via
+  /// [DocLineItemsEditor.onProductCreated]).
+  late List<Product> _products;
   final List<TextEditingController> _qtyCtrls = [];
   final List<TextEditingController> _priceCtrls = [];
   final List<TextEditingController> _discountCtrls = [];
@@ -45,6 +56,7 @@ class _DocLineItemsEditorState extends State<DocLineItemsEditor> {
   @override
   void initState() {
     super.initState();
+    _products = [...widget.products];
     _items = widget.initialItems.map((e) => DocLineItem(
           id: e.id,
           productId: e.productId,
@@ -114,7 +126,7 @@ class _DocLineItemsEditorState extends State<DocLineItemsEditor> {
             Text('Line Items', style: Theme.of(context).textTheme.titleSmall),
             const Spacer(),
             TextButton.icon(
-              onPressed: widget.products.isEmpty ? null : _addRow,
+              onPressed: _addRow,
               icon: const Icon(Icons.add),
               label: const Text('Add Line'),
             ),
@@ -155,18 +167,28 @@ class _DocLineItemsEditorState extends State<DocLineItemsEditor> {
             children: [
               Expanded(
                 flex: 3,
-                child: DropdownButtonFormField<int>(
+                // allowUnknownValue guards against a DropdownButtonFormField
+                // assertion crash: if this line references a product not in
+                // the loaded list (e.g. deleted, or not yet fetched), the
+                // dropdown's value wouldn't match any item.
+                child: QuickAddDropdown<Product>(
+                  label: 'Product',
                   value: item.productId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Product', isDense: true),
-                  items: [
-                    ...widget.products.map((p) => DropdownMenuItem(value: p.id, child: Text('${p.name} [${p.productCode}]', overflow: TextOverflow.ellipsis))),
-                    // Guards against a DropdownButtonFormField assertion crash: if this
-                    // line references a product not in the loaded list (e.g. deleted,
-                    // or not yet fetched), the dropdown's value wouldn't match any item.
-                    if (item.productId != null && widget.products.every((p) => p.id != item.productId))
-                      DropdownMenuItem(value: item.productId, child: Text('Unknown product #${item.productId}')),
-                  ],
+                  options: _products,
+                  idOf: (p) => p.id,
+                  labelOf: (p) => '${p.name} [${p.productCode}]',
+                  addNewLabel: 'Add New Product',
+                  isDense: true,
+                  allowUnknownValue: true,
+                  onCreate: quickAddProduct,
+                  onCreated: (p) {
+                    setState(() {
+                      _products.add(p);
+                      item.productId = p.id;
+                    });
+                    widget.onProductCreated?.call(p);
+                    _notify();
+                  },
                   onChanged: (v) {
                     setState(() => item.productId = v);
                     _notify();

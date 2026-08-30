@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
 import '../widgets/doc_items_editor.dart';
+import '../widgets/quick_add.dart';
 import '../widgets/status_badge.dart';
 import 'sales_order_screen.dart';
 
@@ -163,9 +164,6 @@ class _QuotationScreenState extends State<QuotationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_customers.isEmpty && !_loading) {
-      return const Center(child: Text('Add a Customer first, then come back here to raise a Quotation.'));
-    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -176,7 +174,7 @@ class _QuotationScreenState extends State<QuotationScreen> {
               Text('Quotations', style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
               FilledButton.icon(
-                onPressed: _customers.isEmpty ? null : _create,
+                onPressed: _create,
                 icon: const Icon(Icons.add),
                 label: const Text('New Quotation'),
               ),
@@ -264,10 +262,21 @@ Future<Quotation?> openQuotationForm(
           width: 560,
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              DropdownButtonFormField<int>(
+              QuickAddDropdown<Customer>(
+                label: 'Customer',
                 value: customerId,
-                decoration: const InputDecoration(labelText: 'Customer'),
-                items: customers.map((c) => DropdownMenuItem(value: c.id, child: Text(c.name))).toList(),
+                options: customers,
+                idOf: (c) => c.id,
+                labelOf: (c) => '${c.name} (${c.customerCode})',
+                addNewLabel: 'Add New Customer',
+                allowUnknownValue: true,
+                onCreate: quickAddCustomer,
+                // `customers` is the calling screen's own list, so a
+                // customer added here survives cancelling this dialog.
+                onCreated: (c) => setState(() {
+                  customers.add(c);
+                  customerId = c.id;
+                }),
                 onChanged: (v) => setState(() => customerId = v),
               ),
               const SizedBox(height: 12),
@@ -284,6 +293,7 @@ Future<Quotation?> openQuotationForm(
                 taxes: taxes,
                 initialItems: items,
                 onChanged: (updated) => items = updated,
+                onProductCreated: products.add,
               ),
             ]),
           ),

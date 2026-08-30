@@ -14,12 +14,14 @@ class StatusBadge extends StatelessWidget {
       case 'accepted':
       case 'posted':
       case 'delivered':
+      case 'completed':
         return Colors.green;
       case 'inactive':
       case 'cancelled':
       case 'rejected':
         return Colors.red;
       case 'draft':
+      case 'pending':
         return Colors.grey;
       case 'partially paid':
       case 'partially delivered':

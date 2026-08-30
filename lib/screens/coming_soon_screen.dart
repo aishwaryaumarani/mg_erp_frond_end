@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 /// Placeholder for modules that land in a later phase (spec sec. 17
 /// Development Approach). Keeping the nav item present -- even
@@ -19,14 +20,27 @@ class ComingSoonScreen extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.construction_outlined, size: 48, color: Theme.of(context).colorScheme.outline),
-            const SizedBox(height: 16),
-            Text(moduleName, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: AppColors.tintedBox(AppColors.amber, radius: 20),
+              child: const Icon(Icons.construction_outlined, size: 44, color: AppColors.amber),
+            ),
+            const SizedBox(height: 20),
             Text(
-              phaseNote,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.outline),
+              moduleName,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.brand,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Text(
+                phaseNote,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.slate),
+              ),
             ),
           ],
         ),

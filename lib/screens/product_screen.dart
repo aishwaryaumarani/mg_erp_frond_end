@@ -23,11 +23,13 @@ class ProductScreen extends StatelessWidget {
         'Min stock: ${p.minimumStock.toStringAsFixed(0)} • Reorder: ${p.reorderLevel.toStringAsFixed(0)}',
       ].join(' • '),
       statusOf: (p) => p.status,
-      openForm: _openForm,
+      openForm: openForm,
     );
   }
 
-  static Future<Product?> _openForm(BuildContext context, Product? existing) async {
+  /// Public so quick_add.dart can reopen this same dialog inline from a
+  /// Product dropdown in a document's line items.
+  static Future<Product?> openForm(BuildContext context, Product? existing) async {
     // Pull reference data for the dropdowns (spec sec 2: category/brand/
     // unit filtering, tax linkage). Loaded fresh each time the dialog
     // opens so newly-added categories/brands/etc. show up immediately.

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
 import '../widgets/status_badge.dart';
+import '../widgets/quick_add.dart';
 
 // Includes 'Confirmed' -- confirming a GRN is what actually posts the
 // STOCK IN movement (backend/app/routers/goods_receipts.py). Must be in
@@ -139,9 +140,6 @@ class _GoodsReceiptScreenState extends State<GoodsReceiptScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_suppliers.isEmpty && !_loading) {
-      return const Center(child: Text('Add a Supplier first, then come back here to record a Goods Receipt.'));
-    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -152,7 +150,7 @@ class _GoodsReceiptScreenState extends State<GoodsReceiptScreen> {
               Text('Goods Receipts', style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
               FilledButton.icon(
-                onPressed: _suppliers.isEmpty ? null : _create,
+                onPressed: _create,
                 icon: const Icon(Icons.add),
                 label: const Text('New Receipt'),
               ),
@@ -233,20 +231,38 @@ Future<GoodsReceipt?> _openGoodsReceiptForm(
           width: 520,
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              DropdownButtonFormField<int>(
+              QuickAddDropdown<Supplier>(
+                label: 'Supplier',
                 value: supplierId,
-                decoration: const InputDecoration(labelText: 'Supplier'),
-                items: suppliers.map((s) => DropdownMenuItem(value: s.id, child: Text(s.name))).toList(),
+                options: suppliers,
+                idOf: (s) => s.id,
+                labelOf: (s) => '${s.name} (${s.supplierCode})',
+                addNewLabel: 'Add New Supplier',
+                allowUnknownValue: true,
+                onCreate: quickAddSupplier,
+                // `suppliers` is the calling screen's own list, so a
+                // supplier added here survives cancelling this dialog.
+                onCreated: (s) => setState(() {
+                  suppliers.add(s);
+                  supplierId = s.id;
+                }),
                 onChanged: (v) => setState(() => supplierId = v),
               ),
               const SizedBox(height: 12),
-              DropdownButtonFormField<int?>(
+              QuickAddDropdown<Warehouse>(
+                label: 'Warehouse (optional)',
                 value: warehouseId,
-                decoration: const InputDecoration(labelText: 'Warehouse (optional)'),
-                items: [
-                  const DropdownMenuItem(value: null, child: Text('Unassigned')),
-                  ...warehouses.map((w) => DropdownMenuItem(value: w.id, child: Text(w.name))),
-                ],
+                options: warehouses,
+                idOf: (w) => w.id,
+                labelOf: (w) => w.code == null || w.code!.isEmpty ? w.name : '${w.name} (${w.code})',
+                addNewLabel: 'Add New Warehouse',
+                noneLabel: 'Unassigned',
+                allowUnknownValue: true,
+                onCreate: quickAddWarehouse,
+                onCreated: (w) => setState(() {
+                  warehouses.add(w);
+                  warehouseId = w.id;
+                }),
                 onChanged: (v) => setState(() => warehouseId = v),
               ),
               const SizedBox(height: 12),
@@ -258,13 +274,11 @@ Future<GoodsReceipt?> _openGoodsReceiptForm(
                 Text('What arrived?', style: Theme.of(ctx).textTheme.titleSmall),
                 const Spacer(),
                 TextButton.icon(
-                  onPressed: products.isEmpty
-                      ? null
-                      : () => setState(() {
-                            final item = InquiryItem();
-                            items.add(item);
-                            qtyCtrls.add(TextEditingController(text: item.quantity.toString()));
-                          }),
+                  onPressed: () => setState(() {
+                    final item = InquiryItem();
+                    items.add(item);
+                    qtyCtrls.add(TextEditingController(text: item.quantity.toString()));
+                  }),
                   icon: const Icon(Icons.add),
                   label: const Text('Add Line'),
                 ),
@@ -282,15 +296,20 @@ Future<GoodsReceipt?> _openGoodsReceiptForm(
                     children: [
                       Expanded(
                         flex: 3,
-                        child: DropdownButtonFormField<int>(
+                        child: QuickAddDropdown<Product>(
+                          label: 'Product',
                           value: items[i].productId,
-                          isExpanded: true,
-                          decoration: const InputDecoration(labelText: 'Product', isDense: true),
-                          items: [
-                            ...products.map((p) => DropdownMenuItem(value: p.id, child: Text('${p.name} [${p.productCode}]', overflow: TextOverflow.ellipsis))),
-                            if (items[i].productId != null && products.every((p) => p.id != items[i].productId))
-                              DropdownMenuItem(value: items[i].productId, child: Text('Unknown product #${items[i].productId}')),
-                          ],
+                          options: products,
+                          idOf: (p) => p.id,
+                          labelOf: (p) => '${p.name} [${p.productCode}]',
+                          addNewLabel: 'Add New Product',
+                          isDense: true,
+                          allowUnknownValue: true,
+                          onCreate: quickAddProduct,
+                          onCreated: (p) => setState(() {
+                            products.add(p);
+                            items[i].productId = p.id;
+                          }),
                           onChanged: (v) => setState(() => items[i].productId = v),
                         ),
                       ),

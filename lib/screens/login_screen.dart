@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../theme/app_theme.dart';
 
 /// Sign-in screen shown whenever AuthService.instance.isLoggedIn is false
 /// (see main.dart). Accounts are provisioned top-down -- Super Admin
@@ -49,7 +50,18 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
+      // Brand gradient behind the card -- the sign-in screen is the
+      // first thing anyone sees, so it carries the palette at full
+      // strength while the app itself stays mostly white.
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFFEEF2FF), Color(0xFFF8FAFC), Color(0xFFECFEFF)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: ConstrainedBox(
@@ -60,12 +72,44 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Icon(Icons.inventory_2_outlined, size: 48, color: Theme.of(context).colorScheme.primary),
-                  const SizedBox(height: 12),
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [AppColors.brand, AppColors.indigo],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.brand.withOpacity(0.35),
+                            blurRadius: 18,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(Icons.science_outlined, size: 40, color: Colors.white),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   Text(
-                    'Mini ERP',
+                    'MG Chemicals',
                     textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.brand,
+                        ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Product, Sales, Purchase & Accounting',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodyMedium
+                        ?.copyWith(color: AppColors.slate),
                   ),
                   const SizedBox(height: 32),
                   TextFormField(
@@ -73,7 +117,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     keyboardType: TextInputType.emailAddress,
                     decoration: const InputDecoration(
                       labelText: 'Email',
-                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.mail_outline, color: AppColors.brand),
                     ),
                     validator: (v) => (v == null || v.isEmpty) ? 'Enter your email' : null,
                     onFieldSubmitted: (_) => _submit(),
@@ -84,17 +128,33 @@ class _LoginScreenState extends State<LoginScreen> {
                     obscureText: true,
                     decoration: const InputDecoration(
                       labelText: 'Password',
-                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.lock_outline, color: AppColors.brand),
                     ),
                     validator: (v) => (v == null || v.isEmpty) ? 'Enter your password' : null,
                     onFieldSubmitted: (_) => _submit(),
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: 16),
-                    Text(_error!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: AppColors.tintedBox(AppColors.rose),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.error_outline, color: AppColors.rose, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _error!,
+                              style: const TextStyle(color: AppColors.rose),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                   const SizedBox(height: 24),
                   FilledButton(
+                    style: FilledButton.styleFrom(backgroundColor: AppColors.brand),
                     onPressed: _loading ? null : _submit,
                     child: _loading
                         ? const SizedBox(
@@ -107,6 +167,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ],
               ),
             ),
+          ),
           ),
         ),
       ),

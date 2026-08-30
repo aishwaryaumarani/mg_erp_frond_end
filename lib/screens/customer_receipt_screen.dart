@@ -120,9 +120,6 @@ class _CustomerReceiptScreenState extends State<CustomerReceiptScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_customers.isEmpty && !_loading) {
-      return const Center(child: Text('Add a Customer first, then come back here to record a Receipt.'));
-    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -133,7 +130,7 @@ class _CustomerReceiptScreenState extends State<CustomerReceiptScreen> {
               Text('Customer Receipts', style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
               FilledButton.icon(
-                onPressed: _customers.isEmpty ? null : _create,
+                onPressed: _create,
                 icon: const Icon(Icons.add),
                 label: const Text('New Receipt'),
               ),
