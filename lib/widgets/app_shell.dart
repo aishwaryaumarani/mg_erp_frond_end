@@ -15,6 +15,34 @@ class NavGroup {
   const NavGroup(this.label, this.icon, this.children);
 }
 
+/// Lets descendants drive the shell's sidebar selection -- the Dashboard's
+/// KPI tiles use it so tapping a tile lands on exactly the screen the
+/// sidebar would have opened, instead of pushing a second copy on top.
+class AppShellNav extends InheritedWidget {
+  final void Function(String group, String leaf) goTo;
+
+  /// Whether a destination is actually in this shell. Destinations come
+  /// and go with the signed-in user's departments (see main.dart), so a
+  /// caller must ask before offering a tap that would lead nowhere.
+  final bool Function(String group, String leaf) has;
+
+  const AppShellNav({
+    super.key,
+    required this.goTo,
+    required this.has,
+    required super.child,
+  });
+
+  /// Deliberately does not register a dependency -- callers only invoke
+  /// [goTo] from a tap handler, and the callback always dispatches to the
+  /// live shell State.
+  static AppShellNav? maybeOf(BuildContext context) =>
+      context.getElementForInheritedWidgetOfExactType<AppShellNav>()?.widget as AppShellNav?;
+
+  @override
+  bool updateShouldNotify(AppShellNav oldWidget) => false;
+}
+
 /// App-wide shell: collapsible sidebar (spec sec 14/16) on the left,
 /// selected screen on the right. Works as a persistent rail on wide
 /// screens and a drawer on narrow ones.
@@ -42,6 +70,41 @@ class _AppShellState extends State<AppShell> {
   late int _groupIndex = widget.initialGroup;
   late int _leafIndex = widget.initialLeaf;
 
+  /// Selects a destination by its sidebar labels, e.g. ('Masters',
+  /// 'Products'). Labels are what the Dashboard tiles carry, so nav
+  /// targets stay readable at the call site.
+  void _goTo(String group, String leaf) {
+    final target = _find(group, leaf);
+    if (target == null) {
+      // Not an error any more: main.dart drops whole groups the signed-in
+      // user has no permission for, so a Dashboard tile pointing at
+      // Purchase is simply unreachable for a Sales-only user. Callers are
+      // expected to check [_has] and not offer the tap at all -- this
+      // guard keeps a missed check from crashing them.
+      debugPrint('AppShell has no "$group / $leaf" destination');
+      return;
+    }
+    setState(() {
+      _groupIndex = target.$1;
+      _leafIndex = target.$2;
+    });
+  }
+
+  /// Whether this shell currently contains the destination -- false once
+  /// the group was filtered out for lacking the department permission.
+  bool _has(String group, String leaf) => _find(group, leaf) != null;
+
+  (int, int)? _find(String group, String leaf) {
+    for (int g = 0; g < widget.groups.length; g++) {
+      if (widget.groups[g].label != group) continue;
+      final children = widget.groups[g].children;
+      for (int l = 0; l < children.length; l++) {
+        if (children[l].label == leaf) return (g, l);
+      }
+    }
+    return null;
+  }
+
   Widget _buildSidebar(BuildContext context) {
     return Container(
       color: Colors.white,
@@ -50,8 +113,7 @@ class _AppShellState extends State<AppShell> {
         children: [
           _buildBrandHeader(context),
           const SizedBox(height: 8),
-          for (int g = 0; g < widget.groups.length; g++)
-            _buildGroup(context, g),
+          for (int g = 0; g < widget.groups.length; g++) _buildGroup(context, g),
           const SizedBox(height: 16),
         ],
       ),
@@ -212,12 +274,16 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final currentGroup = widget.groups[_groupIndex];
-    final currentLeaf = currentGroup.children[
-        _leafIndex < currentGroup.children.length ? _leafIndex : 0];
+    final currentLeaf =
+        currentGroup.children[_leafIndex < currentGroup.children.length ? _leafIndex : 0];
 
     return LayoutBuilder(builder: (context, constraints) {
       final isWide = constraints.maxWidth >= 900;
-      final body = Builder(builder: (ctx) => currentLeaf.builder(ctx));
+      final body = AppShellNav(
+        goTo: _goTo,
+        has: _has,
+        child: Builder(builder: (ctx) => currentLeaf.builder(ctx)),
+      );
 
       if (isWide) {
         return Scaffold(

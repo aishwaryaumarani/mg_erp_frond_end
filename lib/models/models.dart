@@ -11,7 +11,8 @@ class CompanyModel {
   String status; // Active | Suspended
   final String createdAt;
 
-  CompanyModel({required this.id, required this.name, required this.status, required this.createdAt});
+  CompanyModel(
+      {required this.id, required this.name, required this.status, required this.createdAt});
 
   factory CompanyModel.fromJson(Map<String, dynamic> j) => CompanyModel(
         id: j['id'],
@@ -28,6 +29,10 @@ class AppUser {
   String email;
   String role; // super_admin | company_admin | user
   String status; // Active | Suspended
+  // Departments this user may open (backend/app/core/permissions.py).
+  // Always empty for a company_admin -- they are never gated, so the
+  // backend stores no rows for them.
+  List<String> modules;
 
   AppUser({
     required this.id,
@@ -36,6 +41,7 @@ class AppUser {
     required this.email,
     required this.role,
     required this.status,
+    this.modules = const [],
   });
 
   factory AppUser.fromJson(Map<String, dynamic> j) => AppUser(
@@ -45,7 +51,19 @@ class AppUser {
         email: j['email'],
         role: j['role'],
         status: j['status'] ?? 'Active',
+        modules: ((j['modules'] as List<dynamic>?) ?? const []).cast<String>(),
       );
+}
+
+/// One tickable department from GET /api/users/modules. Fetched rather
+/// than hard-coded so the Team screen can never offer a permission the
+/// backend does not actually enforce.
+class AppModule {
+  final String key;
+  final String label;
+  const AppModule({required this.key, required this.label});
+
+  factory AppModule.fromJson(Map<String, dynamic> j) => AppModule(key: j['key'], label: j['label']);
 }
 
 // Data models for Phase 1: Category, Brand, Unit, Tax, Product,
@@ -1379,7 +1397,8 @@ class TaskChecklistItem {
   bool isDone;
   int position;
 
-  TaskChecklistItem({this.id, this.taskId, required this.title, this.isDone = false, this.position = 0});
+  TaskChecklistItem(
+      {this.id, this.taskId, required this.title, this.isDone = false, this.position = 0});
 
   factory TaskChecklistItem.fromJson(Map<String, dynamic> j) => TaskChecklistItem(
         id: j['id'],
@@ -1412,6 +1431,7 @@ class TaskModel {
   int? referenceId;
   final String? outcome;
   final String? completedAt;
+
   /// Derived server-side per request, never stored -- a persisted
   /// "overdue" flag would go stale at midnight.
   final bool isOverdue;
