@@ -8,17 +8,22 @@ import 'package:flutter/material.dart';
 class AppColors {
   AppColors._();
 
-  static const Color brand = Color(0xFF2563EB); // primary seed
-  static const Color indigo = Color(0xFF4F46E5);
-  static const Color violet = Color(0xFF7C3AED);
-  static const Color teal = Color(0xFF0D9488);
-  static const Color green = Color(0xFF16A34A);
-  static const Color amber = Color(0xFFD97706);
-  static const Color orange = Color(0xFFEA580C);
-  static const Color rose = Color(0xFFE11D48);
-  static const Color cyan = Color(0xFF0891B2);
-  static const Color pink = Color(0xFFDB2777);
+  static const Color brand = Color(0xFF1D4ED8);
+  static const Color indigo = Color(0xFF4338CA);
+  static const Color violet = Color(0xFF6D28D9);
+  static const Color teal = Color(0xFF0F766E);
+  static const Color green = Color(0xFF15803D);
+  static const Color amber = Color(0xFFB45309);
+  static const Color orange = Color(0xFFC2410C);
+  static const Color rose = Color(0xFFBE123C);
+  static const Color cyan = Color(0xFF0E7490);
+  static const Color pink = Color(0xFFBE185D);
   static const Color slate = Color(0xFF475569);
+  static const Color ink = Color(0xFF0F172A);
+  static const Color muted = Color(0xFF64748B);
+  static const Color surface = Color(0xFFFFFFFF);
+  static const Color page = Color(0xFFF6F8FB);
+  static const Color line = Color(0xFFE2E8F0);
 
   /// Rotated through wherever a list of tiles needs distinct accents
   /// (dashboard KPIs) -- ordered so neighbours never share a hue family.
@@ -59,62 +64,120 @@ class AppColors {
   /// group.
   static Color forModule(String label) {
     for (final entry in _byModule.entries) {
-      if (label == entry.key || label.startsWith('${entry.key} ')) return entry.value;
+      if (label == entry.key || label.startsWith('${entry.key} ')) {
+        return entry.value;
+      }
     }
     return brand;
   }
 
   /// Standard "icon or text on a tint of its own colour" decoration.
-  static BoxDecoration tintedBox(Color color, {double radius = 12, bool border = true}) {
+  static BoxDecoration tintedBox(Color color,
+      {double radius = 12, bool border = true}) {
     return BoxDecoration(
-      color: color.withOpacity(0.10),
+      color: color.withValues(alpha: 0.10),
       borderRadius: BorderRadius.circular(radius),
-      border: border ? Border.all(color: color.withOpacity(0.25)) : null,
+      border: border ? Border.all(color: color.withValues(alpha: 0.25)) : null,
     );
   }
 }
 
 /// Builds the single [ThemeData] used by MaterialApp in main.dart.
 ThemeData buildAppTheme() {
-  final scheme = ColorScheme.fromSeed(seedColor: AppColors.brand);
+  final scheme = ColorScheme.fromSeed(
+    seedColor: AppColors.brand,
+    brightness: Brightness.light,
+  );
 
   return ThemeData(
     colorScheme: scheme,
     useMaterial3: true,
-    scaffoldBackgroundColor: const Color(0xFFF8FAFC),
-    dividerColor: scheme.outlineVariant,
+    scaffoldBackgroundColor: AppColors.page,
+    dividerColor: AppColors.line,
+    fontFamily: 'Roboto',
+    visualDensity: VisualDensity.standard,
     appBarTheme: const AppBarTheme(
-      backgroundColor: AppColors.brand,
-      foregroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
+      foregroundColor: AppColors.ink,
       elevation: 0,
+      centerTitle: false,
+    ),
+    cardTheme: CardThemeData(
+      color: AppColors.surface,
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: const BorderSide(color: AppColors.line),
+      ),
     ),
     listTileTheme: ListTileThemeData(
       selectedColor: AppColors.brand,
-      selectedTileColor: AppColors.brand.withOpacity(0.10),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      selectedTileColor: AppColors.brand.withValues(alpha: 0.08),
+      iconColor: AppColors.muted,
+      textColor: AppColors.ink,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: Colors.white,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+      fillColor: AppColors.surface,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+        borderSide: const BorderSide(color: AppColors.line),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         borderSide: const BorderSide(color: AppColors.brand, width: 2),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: const BorderSide(color: AppColors.rose),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        backgroundColor: AppColors.brand,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.brand,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        side: const BorderSide(color: AppColors.line),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: AppColors.brand,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(
+        foregroundColor: AppColors.muted,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: AppColors.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      titleTextStyle: const TextStyle(
+        color: AppColors.ink,
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
       ),
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     ),
     expansionTileTheme: const ExpansionTileThemeData(
       iconColor: AppColors.slate,

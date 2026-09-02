@@ -37,7 +37,8 @@ class AppShellNav extends InheritedWidget {
   /// [goTo] from a tap handler, and the callback always dispatches to the
   /// live shell State.
   static AppShellNav? maybeOf(BuildContext context) =>
-      context.getElementForInheritedWidgetOfExactType<AppShellNav>()?.widget as AppShellNav?;
+      context.getElementForInheritedWidgetOfExactType<AppShellNav>()?.widget
+          as AppShellNav?;
 
   @override
   bool updateShouldNotify(AppShellNav oldWidget) => false;
@@ -107,50 +108,66 @@ class _AppShellState extends State<AppShell> {
 
   Widget _buildSidebar(BuildContext context) {
     return Container(
-      color: Colors.white,
+      color: AppColors.surface,
       child: ListView(
-        padding: EdgeInsets.zero,
+        padding: const EdgeInsets.only(bottom: 16),
         children: [
           _buildBrandHeader(context),
-          const SizedBox(height: 8),
-          for (int g = 0; g < widget.groups.length; g++) _buildGroup(context, g),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
+          for (int g = 0; g < widget.groups.length; g++)
+            _buildGroup(context, g),
         ],
       ),
     );
   }
 
-  /// Gradient masthead at the top of the sidebar -- the one place the
-  /// brand blue runs full-bleed, so the coloured module icons below it
-  /// read as a palette rather than as noise.
   Widget _buildBrandHeader(BuildContext context) {
-    return Container(
-      height: 64,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [AppColors.brand, AppColors.indigo],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 14),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            width: 42,
+            height: 42,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.20),
-              borderRadius: BorderRadius.circular(10),
+              color: AppColors.brand,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.brand.withValues(alpha: 0.24),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+              ],
             ),
-            child: const Icon(Icons.science_outlined, color: Colors.white, size: 20),
+            child: const Icon(Icons.science_outlined,
+                color: Colors.white, size: 22),
           ),
           const SizedBox(width: 12),
-          Text(
-            'MG Chemicals',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'MG Chemicals',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.ink,
+                      ),
                 ),
+                const SizedBox(height: 2),
+                Text(
+                  'Operations ERP',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.muted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -159,13 +176,10 @@ class _AppShellState extends State<AppShell> {
 
   Widget _buildGroup(BuildContext context, int g) {
     final group = widget.groups[g];
-    // Each module owns a colour (AppColors.forModule) that tints its
-    // icon chip and its selected rows, so the sidebar stays scannable
-    // once every phase's nav items are present.
     final color = AppColors.forModule(group.label);
 
-    if (group.children.length == 1 && group.children.first.label == group.label) {
-      // Single-leaf "group" (e.g. Dashboard) renders as a flat item.
+    if (group.children.length == 1 &&
+        group.children.first.label == group.label) {
       final selected = _groupIndex == g;
       return _navTile(
         context,
@@ -182,34 +196,42 @@ class _AppShellState extends State<AppShell> {
         },
       );
     }
-    return ExpansionTile(
-      leading: _iconChip(group.icon, color),
-      title: Text(
-        group.label,
-        style: TextStyle(fontWeight: FontWeight.w600, color: color),
-      ),
-      iconColor: color,
-      collapsedIconColor: color.withOpacity(0.6),
-      initiallyExpanded: _groupIndex == g,
-      childrenPadding: const EdgeInsets.only(bottom: 4),
-      children: [
-        for (int l = 0; l < group.children.length; l++)
-          _navTile(
-            context,
-            color: color,
-            icon: group.children[l].icon,
-            label: group.children[l].label,
-            selected: _groupIndex == g && _leafIndex == l,
-            dense: true,
-            onTap: () {
-              setState(() {
-                _groupIndex = g;
-                _leafIndex = l;
-              });
-              _closeDrawerIfAny(context);
-            },
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.fromLTRB(16, 2, 12, 2),
+        leading: _iconChip(group.icon, color),
+        title: Text(
+          group.label,
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            color: AppColors.ink,
+            fontSize: 14,
           ),
-      ],
+        ),
+        iconColor: AppColors.muted,
+        collapsedIconColor: AppColors.muted,
+        initiallyExpanded: _groupIndex == g,
+        childrenPadding: const EdgeInsets.only(bottom: 6),
+        children: [
+          for (int l = 0; l < group.children.length; l++)
+            _navTile(
+              context,
+              color: color,
+              icon: group.children[l].icon,
+              label: group.children[l].label,
+              selected: _groupIndex == g && _leafIndex == l,
+              dense: true,
+              onTap: () {
+                setState(() {
+                  _groupIndex = g;
+                  _leafIndex = l;
+                });
+                _closeDrawerIfAny(context);
+              },
+            ),
+        ],
+      ),
     );
   }
 
@@ -227,26 +249,41 @@ class _AppShellState extends State<AppShell> {
   }) {
     final fg = selected ? color : AppColors.slate;
     return Padding(
-      padding: EdgeInsets.only(left: dense ? 20 : 8, right: 8, bottom: 2),
+      padding: EdgeInsets.fromLTRB(dense ? 28 : 12, 2, 12, 2),
       child: Material(
-        color: selected ? color.withOpacity(0.12) : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
+        color: selected ? color.withValues(alpha: 0.10) : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
         child: InkWell(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(8),
           onTap: onTap,
           child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12, vertical: dense ? 9 : 12),
+            padding:
+                EdgeInsets.symmetric(horizontal: 10, vertical: dense ? 9 : 11),
             child: Row(
               children: [
-                Icon(icon, size: dense ? 18 : 20, color: fg),
-                const SizedBox(width: 12),
+                if (selected)
+                  Container(
+                    width: 3,
+                    height: 22,
+                    margin: const EdgeInsets.only(right: 9),
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  )
+                else
+                  const SizedBox(width: 12),
+                Icon(icon, size: dense ? 17 : 19, color: fg),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: fg,
                       fontSize: dense ? 13 : 14,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                     ),
                   ),
                 ),
@@ -259,8 +296,10 @@ class _AppShellState extends State<AppShell> {
   }
 
   Widget _iconChip(IconData icon, Color color) => Container(
-        padding: const EdgeInsets.all(7),
-        decoration: AppColors.tintedBox(color, radius: 9, border: false),
+        width: 34,
+        height: 34,
+        alignment: Alignment.center,
+        decoration: AppColors.tintedBox(color, radius: 8, border: false),
         child: Icon(icon, size: 18, color: color),
       );
 
@@ -274,8 +313,8 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final currentGroup = widget.groups[_groupIndex];
-    final currentLeaf =
-        currentGroup.children[_leafIndex < currentGroup.children.length ? _leafIndex : 0];
+    final currentLeaf = currentGroup
+        .children[_leafIndex < currentGroup.children.length ? _leafIndex : 0];
 
     return LayoutBuilder(builder: (context, constraints) {
       final isWide = constraints.maxWidth >= 900;
@@ -289,7 +328,7 @@ class _AppShellState extends State<AppShell> {
         return Scaffold(
           body: Row(
             children: [
-              SizedBox(width: 260, child: _buildSidebar(context)),
+              SizedBox(width: 276, child: _buildSidebar(context)),
               const VerticalDivider(width: 1),
               Expanded(
                 child: Column(
@@ -312,8 +351,8 @@ class _AppShellState extends State<AppShell> {
       return Scaffold(
         appBar: AppBar(
           title: Text(currentLeaf.label),
-          backgroundColor: AppColors.forModule(currentGroup.label),
-          foregroundColor: Colors.white,
+          backgroundColor: AppColors.surface,
+          foregroundColor: AppColors.ink,
           actions: widget.actions,
         ),
         drawer: Drawer(child: _buildSidebar(context)),
@@ -327,36 +366,54 @@ class _TopBar extends StatelessWidget {
   final String title;
   final Color color;
   final List<Widget> actions;
-  const _TopBar({required this.title, required this.color, this.actions = const []});
+  const _TopBar(
+      {required this.title, required this.color, this.actions = const []});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 64,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      decoration: BoxDecoration(
-        // Faint wash of the active module's colour, so the header keeps
-        // matching the sidebar selection as you move between modules.
-        gradient: LinearGradient(
-          colors: [color.withOpacity(0.10), Colors.white],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
-        border: Border(bottom: BorderSide(color: color.withOpacity(0.25))),
+      height: 68,
+      padding: const EdgeInsets.symmetric(horizontal: 28),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(bottom: BorderSide(color: AppColors.line)),
       ),
       child: Row(
         children: [
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: AppColors.tintedBox(color, radius: 8, border: false),
+            child: Icon(Icons.layers_outlined, color: color, size: 19),
+          ),
+          const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              title,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: color,
-                  ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.ink,
+                      ),
+                ),
+                Text(
+                  'MG Chemicals',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.muted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ],
             ),
           ),
           IconTheme(
-            data: IconThemeData(color: color),
+            data: const IconThemeData(color: AppColors.muted),
             child: Row(mainAxisSize: MainAxisSize.min, children: actions),
           ),
         ],

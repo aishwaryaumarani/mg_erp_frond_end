@@ -56,9 +56,11 @@ class _MasterCrudScreenState<T> extends State<MasterCrudScreen<T>> {
     });
     try {
       final query = _searchCtrl.text.isEmpty ? null : {'q': _searchCtrl.text};
-      final raw = await ApiService.instance.list(widget.resourcePath, query: query);
+      final raw =
+          await ApiService.instance.list(widget.resourcePath, query: query);
       setState(() {
-        _items = raw.map((e) => widget.fromJson(e as Map<String, dynamic>)).toList();
+        _items =
+            raw.map((e) => widget.fromJson(e as Map<String, dynamic>)).toList();
         _loading = false;
       });
     } catch (e) {
@@ -73,7 +75,8 @@ class _MasterCrudScreenState<T> extends State<MasterCrudScreen<T>> {
     final result = await widget.openForm(context, null);
     if (result == null) return;
     try {
-      await ApiService.instance.create(widget.resourcePath, widget.toJson(result));
+      await ApiService.instance
+          .create(widget.resourcePath, widget.toJson(result));
       _load();
     } catch (e) {
       _showError(e);
@@ -85,7 +88,8 @@ class _MasterCrudScreenState<T> extends State<MasterCrudScreen<T>> {
     if (result == null) return;
     final id = widget.idOf(item);
     try {
-      await ApiService.instance.update('${widget.resourcePath}$id', widget.toJson(result));
+      await ApiService.instance
+          .update('${widget.resourcePath}$id', widget.toJson(result));
       _load();
     } catch (e) {
       _showError(e);
@@ -97,9 +101,12 @@ class _MasterCrudScreenState<T> extends State<MasterCrudScreen<T>> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Delete ${widget.entityName}?'),
-        content: Text('Delete "${widget.titleOf(item)}"? This can be undone by re-adding it; historical transactions are preserved.'),
+        content: Text(
+            'Delete "${widget.titleOf(item)}"? This can be undone by re-adding it; historical transactions are preserved.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.rose),
             onPressed: () => Navigator.pop(ctx, true),
@@ -129,128 +136,225 @@ class _MasterCrudScreenState<T> extends State<MasterCrudScreen<T>> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              if (widget.searchable)
-                Expanded(
-                  child: TextField(
-                    controller: _searchCtrl,
-                    decoration: InputDecoration(
-                      hintText: 'Search ${widget.entityName.toLowerCase()}s...',
-                      prefixIcon: const Icon(Icons.search, color: AppColors.brand),
-                      isDense: true,
-                    ),
-                    onSubmitted: (_) => _load(),
-                  ),
-                ),
-              const SizedBox(width: 12),
-              FilledButton.icon(
-                onPressed: _create,
-                icon: const Icon(Icons.add),
-                label: Text('New ${widget.entityName}'),
-              ),
-            ],
-          ),
-        ),
-        if (_error != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: AppColors.tintedBox(AppColors.rose),
-              child: Row(
-                children: [
-                  const Icon(Icons.error_outline, color: AppColors.rose, size: 20),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text(_error!, style: const TextStyle(color: AppColors.rose))),
-                ],
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Card(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final narrow = constraints.maxWidth < 620;
+                  final search = widget.searchable
+                      ? TextField(
+                          controller: _searchCtrl,
+                          decoration: InputDecoration(
+                            hintText:
+                                'Search ${widget.entityName.toLowerCase()}s...',
+                            prefixIcon: const Icon(Icons.search),
+                            isDense: true,
+                          ),
+                          onSubmitted: (_) => _load(),
+                        )
+                      : const SizedBox.shrink();
+                  final button = FilledButton.icon(
+                    onPressed: _create,
+                    icon: const Icon(Icons.add),
+                    label: Text('New ${widget.entityName}'),
+                  );
+                  if (narrow) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (widget.searchable) search,
+                        if (widget.searchable) const SizedBox(height: 12),
+                        button,
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      if (widget.searchable) Expanded(child: search),
+                      if (widget.searchable) const SizedBox(width: 12),
+                      button,
+                    ],
+                  );
+                },
               ),
             ),
-          ),
-        Expanded(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator())
-              : _items.isEmpty
-                  ? Center(
-                      child: Text('No ${widget.entityName.toLowerCase()}s yet.',
-                          style: Theme.of(context).textTheme.bodyLarge),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView.separated(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        itemCount: _items.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (context, i) {
-                          final item = _items[i];
-                          // Row accent rotates through the palette so a
-                          // long list of otherwise identical rows is
-                          // still easy to keep your place in.
-                          final accent = AppColors.accentAt(i);
-                          final title = widget.titleOf(item);
-                          return Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: accent.withOpacity(0.20)),
-                            ),
-                            child: ListTile(
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            leading: Container(
-                              width: 40,
-                              height: 40,
-                              alignment: Alignment.center,
-                              decoration: AppColors.tintedBox(accent, radius: 10, border: false),
-                              child: Text(
-                                title.isEmpty ? '?' : title.characters.first.toUpperCase(),
-                                style: TextStyle(
-                                  color: accent,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
+            const Divider(height: 1),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: AppColors.tintedBox(AppColors.rose, radius: 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline,
+                          color: AppColors.rose, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                          child: Text(_error!,
+                              style: const TextStyle(color: AppColors.rose))),
+                    ],
+                  ),
+                ),
+              ),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _items.isEmpty
+                      ? _EmptyState(
+                          entityName: widget.entityName, onCreate: _create)
+                      : RefreshIndicator(
+                          onRefresh: _load,
+                          child: ListView.separated(
+                            padding: const EdgeInsets.all(18),
+                            itemCount: _items.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 10),
+                            itemBuilder: (context, i) {
+                              final item = _items[i];
+                              final accent = AppColors.accentAt(i);
+                              final title = widget.titleOf(item);
+                              return Container(
+                                decoration: BoxDecoration(
+                                  color: AppColors.surface,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: AppColors.line),
                                 ),
-                              ),
-                            ),
-                            title: Text(
-                              title,
-                              style: const TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                            subtitle: widget.subtitleOf != null
-                                ? Text(
-                                    widget.subtitleOf!(item),
-                                    style: const TextStyle(color: AppColors.slate),
-                                  )
-                                : null,
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (widget.statusOf != null) ...[
-                                  StatusBadge(status: widget.statusOf!(item)),
-                                  const SizedBox(width: 12),
-                                ],
-                                IconButton(
-                                  icon: const Icon(Icons.edit_outlined, color: AppColors.brand),
-                                  onPressed: () => _edit(item),
-                                  tooltip: 'Edit',
+                                child: ListTile(
+                                  minVerticalPadding: 14,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 14, vertical: 6),
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8)),
+                                  leading: Container(
+                                    width: 40,
+                                    height: 40,
+                                    alignment: Alignment.center,
+                                    decoration: AppColors.tintedBox(accent,
+                                        radius: 8, border: false),
+                                    child: Text(
+                                      title.isEmpty
+                                          ? '?'
+                                          : title.characters.first
+                                              .toUpperCase(),
+                                      style: TextStyle(
+                                        color: accent,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ),
+                                  title: Text(
+                                    title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: AppColors.ink,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  subtitle: widget.subtitleOf != null
+                                      ? Padding(
+                                          padding:
+                                              const EdgeInsets.only(top: 4),
+                                          child: Text(
+                                            widget.subtitleOf!(item),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                                color: AppColors.muted),
+                                          ),
+                                        )
+                                      : null,
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (widget.statusOf != null) ...[
+                                        StatusBadge(
+                                            status: widget.statusOf!(item)),
+                                        const SizedBox(width: 8),
+                                      ],
+                                      IconButton(
+                                        icon: const Icon(Icons.edit_outlined),
+                                        color: AppColors.brand,
+                                        onPressed: () => _edit(item),
+                                        tooltip: 'Edit',
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete_outline),
+                                        color: AppColors.rose,
+                                        onPressed: () => _delete(item),
+                                        tooltip: 'Delete',
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline, color: AppColors.rose),
-                                  onPressed: () => _delete(item),
-                                  tooltip: 'Delete',
-                                ),
-                              ],
-                            ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
+                              );
+                            },
+                          ),
+                        ),
+            ),
+          ],
         ),
-      ],
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  final String entityName;
+  final VoidCallback onCreate;
+
+  const _EmptyState({required this.entityName, required this.onCreate});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              alignment: Alignment.center,
+              decoration: AppColors.tintedBox(AppColors.brand,
+                  radius: 8, border: false),
+              child: const Icon(Icons.inbox_outlined, color: AppColors.brand),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'No ${entityName.toLowerCase()}s yet',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: AppColors.ink,
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Create the first record to start building this master list.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(color: AppColors.muted),
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: onCreate,
+              icon: const Icon(Icons.add),
+              label: Text('New $entityName'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

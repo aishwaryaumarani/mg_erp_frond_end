@@ -52,7 +52,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.cloud_off_outlined, size: 40, color: AppColors.rose),
+                const Icon(Icons.cloud_off_outlined,
+                    size: 40, color: AppColors.rose),
                 const SizedBox(height: 12),
                 Text(
                   'Could not reach the backend',
@@ -84,28 +85,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(24),
         children: [
+          _dashboardHeader(),
+          const SizedBox(height: 24),
           _section('Masters', [
-            _kpi('Total Products', s['total_products'], Icons.inventory_2_outlined,
+            _kpi('Total Products', s['total_products'],
+                Icons.inventory_2_outlined,
                 to: ('Masters', 'Products')),
             _kpi('Categories', s['total_categories'], Icons.category_outlined,
                 to: ('Masters', 'Categories')),
             _kpi('Customers', s['total_customers'], Icons.people_outline,
                 to: ('Masters', 'Customers')),
-            _kpi('Suppliers', s['total_suppliers'], Icons.local_shipping_outlined,
+            _kpi('Suppliers', s['total_suppliers'],
+                Icons.local_shipping_outlined,
                 to: ('Masters', 'Suppliers')),
           ]),
           _section('Sales (Phase 2/3)', [
-            _kpi("Today's Sales", s['todays_sales'], Icons.point_of_sale_outlined,
+            _kpi("Today's Sales", s['todays_sales'],
+                Icons.point_of_sale_outlined,
                 to: ('Sales', 'Sales Invoices')),
-            _kpi('Monthly Sales', s['monthly_sales'], Icons.calendar_month_outlined,
+            _kpi('Monthly Sales', s['monthly_sales'],
+                Icons.calendar_month_outlined,
                 to: ('Sales', 'Sales Invoices')),
-            _kpi('Pending Quotations', s['pending_quotations'], Icons.request_quote_outlined,
+            _kpi('Pending Quotations', s['pending_quotations'],
+                Icons.request_quote_outlined,
                 to: ('Sales', 'Quotations')),
-            _kpi('Pending Sales Orders', s['pending_sales_orders'], Icons.receipt_long_outlined,
+            _kpi('Pending Sales Orders', s['pending_sales_orders'],
+                Icons.receipt_long_outlined,
                 to: ('Sales', 'Sales Orders')),
-            _kpi('Pending Deliveries', s['pending_deliveries'], Icons.local_shipping_outlined,
+            _kpi('Pending Deliveries', s['pending_deliveries'],
+                Icons.local_shipping_outlined,
                 to: ('Sales', 'Deliveries')),
             // Customer outstanding is worked down by recording receipts,
             // so that is where the tile lands rather than on the invoices.
@@ -114,23 +124,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 to: ('Sales', 'Receipts')),
           ]),
           _section('Purchase (Phase 4/5)', [
-            _kpi("Today's Purchase", s['todays_purchase'], Icons.shopping_cart_outlined,
+            _kpi("Today's Purchase", s['todays_purchase'],
+                Icons.shopping_cart_outlined,
                 to: ('Purchase', 'Purchase Invoices')),
-            _kpi('Pending Purchase Orders', s['pending_purchase_orders'], Icons.assignment_outlined,
+            _kpi('Pending Purchase Orders', s['pending_purchase_orders'],
+                Icons.assignment_outlined,
                 to: ('Purchase', 'Purchase Orders')),
-            _kpi(
-                'Pending Goods Receipts', s['pending_goods_receipts'], Icons.move_to_inbox_outlined,
+            _kpi('Pending Goods Receipts', s['pending_goods_receipts'],
+                Icons.move_to_inbox_outlined,
                 to: ('Purchase', 'Goods Receipts')),
             _kpi('Supplier Outstanding', s['supplier_outstanding'],
                 Icons.account_balance_wallet_outlined,
                 to: ('Purchase', 'Payments')),
           ]),
           _section('Inventory (Phase 3/5)', [
-            _kpi('Total Stock Value', s['total_stock_value'], Icons.warehouse_outlined,
+            _kpi('Total Stock Value', s['total_stock_value'],
+                Icons.warehouse_outlined,
                 to: ('Inventory', 'Stock')),
-            _kpi('Low Stock Products', s['low_stock_products'], Icons.warning_amber_outlined,
+            _kpi('Low Stock Products', s['low_stock_products'],
+                Icons.warning_amber_outlined,
                 color: AppColors.amber, to: ('Inventory', 'Stock')),
-            _kpi('Out of Stock', s['out_of_stock_products'], Icons.remove_shopping_cart_outlined,
+            _kpi('Out of Stock', s['out_of_stock_products'],
+                Icons.remove_shopping_cart_outlined,
                 color: AppColors.rose, to: ('Inventory', 'Stock')),
           ]),
           _section('Tasks (Reminders)', [
@@ -140,9 +155,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 color: AppColors.amber, to: ('Tasks', 'Tasks & Reminders')),
             _kpi('Overdue', s['overdue_tasks'], Icons.warning_amber_outlined,
                 color: AppColors.rose, to: ('Tasks', 'Tasks & Reminders')),
-            _kpi('Open Follow-ups', s['open_follow_ups'], Icons.follow_the_signs_outlined,
+            _kpi('Open Follow-ups', s['open_follow_ups'],
+                Icons.follow_the_signs_outlined,
                 color: AppColors.violet, to: ('Tasks', 'Tasks & Reminders')),
-            _kpi('Payment Reminders', s['open_payment_reminders'], Icons.payments_outlined,
+            _kpi('Payment Reminders', s['open_payment_reminders'],
+                Icons.payments_outlined,
                 color: AppColors.green, to: ('Tasks', 'Tasks & Reminders')),
           ]),
           // Accounts screens are still ComingSoonScreen placeholders; the
@@ -154,7 +171,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 color: AppColors.rose, to: ('Accounts', 'Payables')),
             _kpi('Cash Balance', s['cash_balance'], Icons.payments_outlined,
                 color: AppColors.teal, to: ('Accounts', 'Cash')),
-            _kpi('Bank Balance', s['bank_balance'], Icons.account_balance_outlined,
+            _kpi('Bank Balance', s['bank_balance'],
+                Icons.account_balance_outlined,
                 color: AppColors.indigo, to: ('Accounts', 'Bank')),
           ]),
         ],
@@ -168,17 +186,71 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _section(String title, List<Widget> tiles) {
     final color = AppColors.forModule(title);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sectionTitle(title, color),
-          const SizedBox(height: 14),
-          Wrap(spacing: 16, runSpacing: 16, children: tiles),
-        ],
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sectionTitle(title, color),
+              const SizedBox(height: 16),
+              Wrap(spacing: 14, runSpacing: 14, children: tiles),
+            ],
+          ),
+        ),
       ),
     );
   }
+
+  Widget _dashboardHeader() => Container(
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.line),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              decoration: AppColors.tintedBox(AppColors.brand,
+                  radius: 8, border: false),
+              child: const Icon(Icons.dashboard_customize_outlined,
+                  color: AppColors.brand),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Business overview',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.ink,
+                        ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Live operational counts across master data, sales, purchase, inventory and tasks.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppColors.muted,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'Refresh',
+              onPressed: _load,
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+        ),
+      );
 
   Widget _sectionTitle(String text, Color color) => Row(
         children: [
@@ -194,8 +266,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Text(
             text,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: color,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.ink,
                 ),
           ),
         ],
@@ -216,19 +288,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     (String, String)? to,
   }) {
     final accent = color ?? AppColors.accentAt(_tileIndex++);
-    final radius = BorderRadius.circular(14);
+    final radius = BorderRadius.circular(8);
     final nav = AppShellNav.maybeOf(context);
     return Container(
-      width: 200,
+      width: 214,
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: accent.withOpacity(0.25)),
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.line),
         borderRadius: radius,
         boxShadow: [
           BoxShadow(
-            color: accent.withOpacity(0.10),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+            color: AppColors.ink.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -243,7 +315,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ? null
               : () => nav!.goTo(to.$1, to.$2),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(15),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -251,14 +323,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   children: [
                     Container(
                       padding: const EdgeInsets.all(10),
-                      decoration: AppColors.tintedBox(accent, radius: 10, border: false),
+                      decoration: AppColors.tintedBox(accent,
+                          radius: 10, border: false),
                       child: Icon(icon, color: accent, size: 22),
                     ),
                     const Spacer(),
                     // Quiet affordance -- without it a tappable tile looks
                     // identical to the static ones.
                     if (to != null)
-                      Icon(Icons.chevron_right, size: 18, color: accent.withOpacity(0.55)),
+                      Icon(Icons.chevron_right,
+                          size: 18, color: accent.withValues(alpha: 0.55)),
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -266,13 +340,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   '$value',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: accent,
+                        color: AppColors.ink,
                       ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   label,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.slate),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.muted,
+                        fontWeight: FontWeight.w600,
+                      ),
                 ),
               ],
             ),
