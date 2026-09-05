@@ -65,6 +65,14 @@ class _QuotationScreenState extends State<QuotationScreen> {
     }
   }
 
+  /// The Tax master row behind a line, so the document can print the tax
+  /// type by name as well as its rate.
+  Tax? _taxOf(int? id) {
+    if (id == null) return null;
+    final matches = _taxes.where((t) => t.id == id);
+    return matches.isEmpty ? null : matches.first;
+  }
+
   String _productName(int? id) {
     final matches = _products.where((p) => p.id == id);
     return matches.isEmpty ? 'Product #$id' : '${matches.first.name} [${matches.first.productCode}]';
@@ -87,15 +95,18 @@ class _QuotationScreenState extends State<QuotationScreen> {
         billingAddress: q.billingAddress,
         shippingAddress: q.shippingAddress,
         hasPricing: true,
-        lines: q.items
-            .map((e) => DocLineView(
-                  product: _productName(e.productId),
-                  quantity: e.quantity,
-                  unitPrice: e.unitPrice,
-                  discountPercent: e.discountPercent,
-                  lineTotal: e.lineSubtotal,
-                ))
-            .toList(),
+        lines: q.items.map((e) {
+          final tax = _taxOf(e.taxId);
+          return DocLineView(
+            product: _productName(e.productId),
+            quantity: e.quantity,
+            unitPrice: e.unitPrice,
+            discountPercent: e.discountPercent,
+            taxLabel: tax?.name,
+            taxPercent: tax?.ratePercent ?? 0,
+            lineTotal: e.lineSubtotal,
+          );
+        }).toList(),
         subtotal: q.subtotal,
         taxAmount: q.taxAmount,
         totalAmount: q.totalAmount,

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
+import '../theme/app_theme.dart';
 import '../services/document_pdf.dart';
 import '../widgets/doc_detail_page.dart';
 import '../widgets/doc_address_fields.dart';
 import '../widgets/doc_form_page.dart';
 import '../widgets/doc_items_editor.dart';
+import '../widgets/order_charges_editor.dart';
 import '../widgets/quick_add.dart';
 import '../widgets/status_badge.dart';
 import '../widgets/workflow_actions.dart';
@@ -63,6 +65,14 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
     }
   }
 
+  /// The Tax master row behind a line, so the document can print the tax
+  /// type by name as well as its rate.
+  Tax? _taxOf(int? id) {
+    if (id == null) return null;
+    final matches = _taxes.where((t) => t.id == id);
+    return matches.isEmpty ? null : matches.first;
+  }
+
   String _productName(int? id) {
     final matches = _products.where((p) => p.id == id);
     return matches.isEmpty ? 'Product #$id' : '${matches.first.name} [${matches.first.productCode}]';
@@ -82,16 +92,27 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
         billingAddress: o.billingAddress,
         shippingAddress: o.shippingAddress,
         hasPricing: true,
-        lines: o.items
-            .map((e) => DocLineView(
-                  product: _productName(e.productId),
-                  quantity: e.quantity,
-                  unitPrice: e.unitPrice,
-                  discountPercent: e.discountPercent,
-                  lineTotal: e.lineSubtotal,
+        lines: o.items.map((e) {
+          final tax = _taxOf(e.taxId);
+          return DocLineView(
+            product: _productName(e.productId),
+            quantity: e.quantity,
+            unitPrice: e.unitPrice,
+            discountPercent: e.discountPercent,
+            taxLabel: tax?.name,
+            taxPercent: tax?.ratePercent ?? 0,
+            lineTotal: e.lineSubtotal,
+          );
+        }).toList(),
+        charges: o.charges
+            .map((c) => DocChargeView(
+                  label: c.label,
+                  amount: c.amount,
+                  taxPercent: c.taxPercent,
                 ))
             .toList(),
         subtotal: o.subtotal,
+        chargesTotal: o.chargesTotal,
         taxAmount: o.taxAmount,
         totalAmount: o.totalAmount,
         notes: o.notes,
@@ -156,6 +177,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
   Future<void> _createDelivery(SalesOrder order) async {
     try {
       final dlvJson = await ApiService.instance.create('/api/sales-orders/${order.id}/create-delivery', {});
+      _load(); // the order now shows "Sent to Delivery" instead of the button
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Delivery ${dlvJson['delivery_no'] ?? ''} created -- confirm it on the Deliveries screen to update stock.')),
@@ -171,6 +193,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
   Future<void> _createInvoice(SalesOrder order) async {
     try {
       final invJson = await ApiService.instance.create('/api/sales-orders/${order.id}/create-invoice', {});
+      _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Sales Invoice ${invJson['invoice_no'] ?? ''} created -- post it on the Sales Invoices screen.')),
@@ -241,18 +264,31 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
                                 // Deliveries and invoices only come off an
                                 // approved order -- and unlike the earlier
                                 // steps, an order can raise several of them.
-                                if (canMoveOn(o.status)) ...[
+                                // Once an order has gone to Delivery it is
+                                // not offered again -- the marker says where
+                                // it went instead.
+                                if (o.hasDelivery)
+                                  const _MovedOnChip(
+                                    icon: Icons.local_shipping_outlined,
+                                    label: 'Sent to Delivery',
+                                  )
+                                else if (canMoveOn(o.status))
                                   IconButton(
                                     icon: const Icon(Icons.local_shipping_outlined),
                                     tooltip: 'Create Delivery',
                                     onPressed: () => _createDelivery(o),
                                   ),
+                                if (o.hasInvoice)
+                                  const _MovedOnChip(
+                                    icon: Icons.description_outlined,
+                                    label: 'Invoiced',
+                                  )
+                                else if (canMoveOn(o.status))
                                   IconButton(
                                     icon: const Icon(Icons.description_outlined),
                                     tooltip: 'Create Invoice',
                                     onPressed: () => _createInvoice(o),
                                   ),
-                                ],
                                 IconButton(
                                   icon: const Icon(Icons.visibility_outlined),
                                   tooltip: 'View details / PDF',
@@ -299,6 +335,7 @@ Future<SalesOrder?> openSalesOrderForm(
   // so the live total preview is correct immediately -- see
   // models.dart withTaxRates().
   List<DocLineItem> items = existing == null ? [] : withTaxRates(existing.items, taxes);
+  List<OrderCharge> charges = existing?.charges ?? [];
 
   if (existing == null) {
     syncAddressesToCustomer(
@@ -353,6 +390,7 @@ Future<SalesOrder?> openSalesOrderForm(
               shippingAddress: shipping.text.trim().isEmpty ? null : shipping.text.trim(),
               notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
               items: items,
+              charges: charges.where((c) => c.label.trim().isNotEmpty).toList(),
             ),
           );
         },
@@ -399,6 +437,17 @@ Future<SalesOrder?> openSalesOrderForm(
             ],
           ),
           DocFormSection(
+            title: 'Extra charges',
+            hint: 'Labour, parking, freight and the like -- each with its own tax rate. '
+                'They add to the order total without becoming stock items.',
+            children: [
+              OrderChargesEditor(
+                initialCharges: charges,
+                onChanged: (updated) => charges = updated,
+              ),
+            ],
+          ),
+          DocFormSection(
             title: 'Notes',
             children: [
               TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notes'), maxLines: 3),
@@ -408,4 +457,34 @@ Future<SalesOrder?> openSalesOrderForm(
       );
     });
   });
+}
+
+
+/// Marks a step the order has already been through, in place of the button
+/// that would raise it a second time.
+class _MovedOnChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _MovedOnChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppColors.green.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: AppColors.green.withValues(alpha: 0.28)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 13, color: AppColors.green),
+          const SizedBox(width: 4),
+          Text(label,
+              style: const TextStyle(color: AppColors.green, fontSize: 12, fontWeight: FontWeight.w700)),
+        ]),
+      ),
+    );
+  }
 }

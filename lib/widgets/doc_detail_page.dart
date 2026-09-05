@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/document_pdf.dart';
+import 'pdf_preview_page.dart';
 import '../theme/app_theme.dart';
 import 'status_badge.dart';
 
@@ -87,6 +88,9 @@ class DocDetailPage extends StatelessWidget {
                           const DataColumn(label: Text('Qty'), numeric: true),
                           if (doc.hasPricing) const DataColumn(label: Text('Rate'), numeric: true),
                           if (doc.hasPricing) const DataColumn(label: Text('Disc %'), numeric: true),
+                          if (doc.hasPricing) const DataColumn(label: Text('Tax')),
+                          if (doc.hasPricing) const DataColumn(label: Text('Tax %'), numeric: true),
+                          if (doc.hasPricing) const DataColumn(label: Text('Tax Amt'), numeric: true),
                           if (doc.hasPricing) const DataColumn(label: Text('Amount'), numeric: true),
                         ],
                         rows: [
@@ -96,11 +100,41 @@ class DocDetailPage extends StatelessWidget {
                               DataCell(Text(_qty(line.quantity))),
                               if (doc.hasPricing) DataCell(Text(line.unitPrice.toStringAsFixed(2))),
                               if (doc.hasPricing) DataCell(Text(line.discountPercent.toStringAsFixed(2))),
+                              if (doc.hasPricing) DataCell(Text(line.taxLabel ?? '--')),
+                              if (doc.hasPricing) DataCell(Text(line.taxPercent.toStringAsFixed(2))),
+                              if (doc.hasPricing) DataCell(Text(line.taxAmount.toStringAsFixed(2))),
                               if (doc.hasPricing) DataCell(Text(line.lineTotal.toStringAsFixed(2))),
                             ]),
                         ],
                       ),
                     ),
+                  if (doc.charges.isNotEmpty) ...[
+                    const SizedBox(height: 18),
+                    const Text('Extra charges',
+                        style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.ink)),
+                    const SizedBox(height: 8),
+                    for (final c in doc.charges)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        child: Row(children: [
+                          Expanded(child: Text(c.label)),
+                          Text('₹${c.amount.toStringAsFixed(2)}',
+                              style: const TextStyle(color: AppColors.muted)),
+                          SizedBox(
+                            width: 90,
+                            child: Text('+ ${c.taxPercent.toStringAsFixed(2)}% tax',
+                                textAlign: TextAlign.right,
+                                style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+                          ),
+                          SizedBox(
+                            width: 110,
+                            child: Text('₹${c.total.toStringAsFixed(2)}',
+                                textAlign: TextAlign.right,
+                                style: const TextStyle(fontWeight: FontWeight.w700)),
+                          ),
+                        ]),
+                      ),
+                  ],
                   if (doc.hasPricing) ...[
                     const SizedBox(height: 14),
                     Align(
@@ -109,6 +143,7 @@ class DocDetailPage extends StatelessWidget {
                         width: 260,
                         child: Column(children: [
                           _total('Subtotal', doc.subtotal),
+                          if (doc.chargesTotal != 0) _total('Extra charges', doc.chargesTotal),
                           _total('Tax', doc.taxAmount),
                           const Divider(),
                           _total('Total', doc.totalAmount, bold: true),
@@ -142,7 +177,7 @@ class DocDetailPage extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 FilledButton.icon(
-                  onPressed: () => printDocument(doc),
+                  onPressed: () => PdfPreviewPage.open(context, doc),
                   icon: const Icon(Icons.picture_as_pdf_outlined),
                   label: const Text('PDF'),
                 ),

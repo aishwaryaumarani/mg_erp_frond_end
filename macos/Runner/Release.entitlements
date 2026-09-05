@@ -4,5 +4,14 @@
 <dict>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
+	<!-- Opening the print/share sheet for a document PDF (printing plugin,
+	     lib/services/document_pdf.dart). A sandboxed macOS app cannot talk
+	     to the print system without this. -->
+	<key>com.apple.security.print</key>
+	<true/>
+	<!-- Outgoing HTTP to the backend API (lib/config/api_config.dart).
+	     The sandbox blocks every outbound connection without it. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
 </dict>
 </plist>

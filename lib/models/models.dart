@@ -692,6 +692,35 @@ class Quotation {
       };
 }
 
+/// An extra cost on a Sales Order beyond the goods -- labour, parking,
+/// freight and so on. Free text plus an amount, with its own tax rate,
+/// because freight and goods aren't always taxed the same.
+class OrderCharge {
+  final int? id;
+  String label;
+  double amount;
+  double taxPercent;
+
+  OrderCharge({this.id, this.label = '', this.amount = 0, this.taxPercent = 0});
+
+  /// Client-side preview; the server recomputes and stores its own.
+  double get taxAmount => amount * taxPercent / 100;
+  double get total => amount + taxAmount;
+
+  factory OrderCharge.fromJson(Map<String, dynamic> j) => OrderCharge(
+        id: j['id'],
+        label: j['label'] ?? '',
+        amount: (j['amount'] ?? 0).toDouble(),
+        taxPercent: (j['tax_percent'] ?? 0).toDouble(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'label': label,
+        'amount': amount,
+        'tax_percent': taxPercent,
+      };
+}
+
 class SalesOrder {
   final int? id;
   String? orderNo; // server-assigned (SO-0001) if left blank on create
@@ -702,6 +731,12 @@ class SalesOrder {
   /// Server-set: the document has been moved on to the next step, so
   /// its status is frozen (backend/app/core/workflow.py).
   final bool isLocked;
+
+  /// Server-set: this order has already been sent to Delivery / invoiced,
+  /// so those steps are not offered again.
+  final bool hasDelivery;
+  final bool hasInvoice;
+
   /// Snapshot of the customer's addresses taken when the document is
   /// raised -- edited per document, never written back to the master.
   String? billingAddress;
@@ -711,7 +746,12 @@ class SalesOrder {
   double discountAmount;
   double taxAmount;
   double totalAmount;
+
+  /// Goods-only subtotal is [subtotal]; this is what the extra charges add
+  /// (server-computed). [taxAmount]/[totalAmount] already include them.
+  double chargesTotal;
   List<DocLineItem> items;
+  List<OrderCharge> charges;
 
   SalesOrder({
     this.id,
@@ -721,6 +761,8 @@ class SalesOrder {
     this.orderDate,
     this.status = 'Draft',
     this.isLocked = false,
+    this.hasDelivery = false,
+    this.hasInvoice = false,
     this.billingAddress,
     this.shippingAddress,
     this.notes,
@@ -728,8 +770,11 @@ class SalesOrder {
     this.discountAmount = 0,
     this.taxAmount = 0,
     this.totalAmount = 0,
+    this.chargesTotal = 0,
     List<DocLineItem>? items,
-  }) : items = items ?? [];
+    List<OrderCharge>? charges,
+  })  : items = items ?? [],
+        charges = charges ?? [];
 
   factory SalesOrder.fromJson(Map<String, dynamic> j) => SalesOrder(
         id: j['id'],
@@ -739,6 +784,8 @@ class SalesOrder {
         orderDate: j['order_date'],
         status: j['status'] ?? 'Draft',
         isLocked: j['is_locked'] ?? false,
+        hasDelivery: j['has_delivery'] ?? false,
+        hasInvoice: j['has_invoice'] ?? false,
         billingAddress: j['billing_address'],
         shippingAddress: j['shipping_address'],
         notes: j['notes'],
@@ -746,8 +793,12 @@ class SalesOrder {
         discountAmount: (j['discount_amount'] ?? 0).toDouble(),
         taxAmount: (j['tax_amount'] ?? 0).toDouble(),
         totalAmount: (j['total_amount'] ?? 0).toDouble(),
+        chargesTotal: (j['charges_total'] ?? 0).toDouble(),
         items: ((j['items'] as List<dynamic>?) ?? [])
             .map((e) => DocLineItem.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        charges: ((j['charges'] as List<dynamic>?) ?? [])
+            .map((e) => OrderCharge.fromJson(e as Map<String, dynamic>))
             .toList(),
       );
 
@@ -761,6 +812,10 @@ class SalesOrder {
         'shipping_address': shippingAddress,
         'notes': notes,
         'items': items.map((e) => e.toJson()).toList(),
+        'charges': charges
+            .where((c) => c.label.trim().isNotEmpty)
+            .map((e) => e.toJson())
+            .toList(),
       };
 }
 

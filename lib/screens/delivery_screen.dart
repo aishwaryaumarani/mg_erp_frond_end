@@ -1,21 +1,21 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
+import '../services/document_pdf.dart';
+import '../widgets/doc_detail_page.dart';
 import '../widgets/status_badge.dart';
 import '../widgets/quick_add.dart';
-
-// Includes 'Confirmed' -- confirming a Delivery is what actually posts the
-// STOCK OUT movement (backend/app/routers/deliveries.py). Must be in this
-// list or the status display would fail to reflect the real value.
-const _deliveryStatuses = ['Draft', 'Confirmed', 'Cancelled'];
 
 /// Delivery screen -- the ONLY place stock decreases on the Sales side
 /// (spec sec. 8). A delivery is normally raised from a Sales Order (see
 /// sales_order_screen.dart's "Create Delivery" action, which calls
 /// POST /api/sales-orders/{id}/create-delivery and copies quantities
 /// only -- no pricing), but a standalone "New Delivery" is also available.
-/// Once a delivery is Confirmed its stock movement is posted and it can
-/// no longer be edited or deleted (backend enforces this too).
+/// Deliveries are raised from a Sales Order and are never edited here:
+/// the document mirrors its order, and confirming one posts the stock
+/// movement. The screen only creates, views (with a printable Delivery
+/// Note), confirms and deletes -- the backend refuses edits to anything
+/// that isn't a Draft, and refuses to touch a Confirmed one at all.
 class DeliveryScreen extends StatefulWidget {
   const DeliveryScreen({super.key});
 
@@ -64,6 +64,38 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
     }
   }
 
+  String _productName(int? id) {
+    final matches = _products.where((p) => p.id == id);
+    return matches.isEmpty ? 'Product #$id' : '${matches.first.name} [${matches.first.productCode}]';
+  }
+
+  String _warehouseName(int? id) {
+    if (id == null) return '--';
+    final matches = _warehouses.where((w) => w.id == id);
+    return matches.isEmpty ? 'Warehouse #$id' : matches.first.name;
+  }
+
+  /// Deliveries are raised from a Sales Order and confirming one posts a
+  /// stock movement, so this screen only ever shows them -- read-only,
+  /// printable, never editable.
+  DocumentView _viewOf(Delivery d) => DocumentView(
+        docType: 'Delivery Note',
+        docNo: d.deliveryNo ?? '#${d.id}',
+        status: d.status,
+        isLocked: d.status == 'Confirmed', // stock already posted
+        customer: _customerName(d.customerId),
+        fields: {
+          'Delivery date': d.deliveryDate ?? '--',
+          'Warehouse': _warehouseName(d.warehouseId),
+          if (d.salesOrderId != null) 'From sales order': '#${d.salesOrderId}',
+        },
+        hasPricing: false, // quantities only -- valuation lives on the invoice
+        lines: d.items
+            .map((e) => DocLineView(product: _productName(e.productId), quantity: e.quantity))
+            .toList(),
+        notes: d.notes,
+      );
+
   String _customerName(int id) {
     final matches = _customers.where((c) => c.id == id);
     return matches.isEmpty ? 'Customer #$id' : matches.first.name;
@@ -74,17 +106,6 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
     if (result == null) return;
     try {
       await ApiService.instance.create('/api/deliveries/', result.toJson());
-      _load();
-    } catch (e) {
-      _showError(e);
-    }
-  }
-
-  Future<void> _edit(Delivery d) async {
-    final result = await _openDeliveryForm(context, d, _customers, _products, _warehouses);
-    if (result == null) return;
-    try {
-      await ApiService.instance.update('/api/deliveries/${d.id}', result.toJson());
       _load();
     } catch (e) {
       _showError(e);
@@ -186,10 +207,20 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
                                     icon: const Icon(Icons.local_shipping_outlined, size: 18),
                                     label: const Text('Confirm'),
                                   ),
-                                if (d.status != 'Confirmed') ...[
-                                  IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(d), tooltip: 'Edit'),
-                                  IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(d), tooltip: 'Delete'),
-                                ],
+                                IconButton(
+                                  icon: const Icon(Icons.visibility_outlined),
+                                  tooltip: 'View details / PDF',
+                                  onPressed: () => DocDetailPage.open(context, _viewOf(d)),
+                                ),
+                                // No Edit here by design: a delivery mirrors
+                                // its Sales Order, and confirming it posts
+                                // stock.
+                                if (d.status != 'Confirmed')
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline),
+                                    onPressed: () => _delete(d),
+                                    tooltip: 'Delete',
+                                  ),
                               ],
                             ),
                           );
