@@ -273,6 +273,7 @@ class Customer {
   double creditLimit;
   String? paymentTerms;
   double openingBalance;
+  String? grade; // Platinum | Diamond | Gold | Silver -- see widgets/grade_field.dart
   String status;
 
   Customer({
@@ -289,6 +290,7 @@ class Customer {
     this.creditLimit = 0,
     this.paymentTerms,
     this.openingBalance = 0,
+    this.grade,
     this.status = 'Active',
   });
 
@@ -306,6 +308,7 @@ class Customer {
         creditLimit: (j['credit_limit'] ?? 0).toDouble(),
         paymentTerms: j['payment_terms'],
         openingBalance: (j['opening_balance'] ?? 0).toDouble(),
+        grade: j['grade'],
         status: j['status'] ?? 'Active',
       );
 
@@ -322,6 +325,7 @@ class Customer {
         'credit_limit': creditLimit,
         'payment_terms': paymentTerms,
         'opening_balance': openingBalance,
+        'grade': grade,
         'status': status,
       };
 }
@@ -408,6 +412,7 @@ class Lead {
   String? email;
   String? source; // e.g. Website, Referral, Cold Call, Advertisement, Other
   String status; // New | Contacted | Qualified | Converted | Lost
+  String? grade; // Platinum | Diamond | Gold | Silver -- see widgets/grade_field.dart
   String? notes;
   int? convertedCustomerId;
 
@@ -420,6 +425,7 @@ class Lead {
     this.email,
     this.source,
     this.status = 'New',
+    this.grade,
     this.notes,
     this.convertedCustomerId,
   });
@@ -433,6 +439,7 @@ class Lead {
         email: j['email'],
         source: j['source'],
         status: j['status'] ?? 'New',
+        grade: j['grade'],
         notes: j['notes'],
         convertedCustomerId: j['converted_customer_id'],
       );
@@ -445,6 +452,7 @@ class Lead {
         'email': email,
         'source': source,
         'status': status,
+        'grade': grade,
         'notes': notes,
       };
 }
@@ -480,7 +488,14 @@ class Inquiry {
   int? customerId; // backend requires customerId OR leadId, not both null
   int? leadId;
   String? inquiryDate; // yyyy-MM-dd
-  String status; // Open | Quoted | Closed | Cancelled
+  String status; // Draft | Submitted | Approved | Cancelled
+  /// Server-set: the document has been moved on to the next step, so
+  /// its status is frozen (backend/app/core/workflow.py).
+  final bool isLocked;
+  /// Snapshot of the customer's addresses taken when the document is
+  /// raised -- edited per document, never written back to the master.
+  String? billingAddress;
+  String? shippingAddress;
   String? notes;
   List<InquiryItem> items;
 
@@ -490,7 +505,10 @@ class Inquiry {
     this.customerId,
     this.leadId,
     this.inquiryDate,
-    this.status = 'Open',
+    this.status = 'Draft',
+    this.isLocked = false,
+    this.billingAddress,
+    this.shippingAddress,
     this.notes,
     List<InquiryItem>? items,
   }) : items = items ?? [];
@@ -501,7 +519,10 @@ class Inquiry {
         customerId: j['customer_id'],
         leadId: j['lead_id'],
         inquiryDate: j['inquiry_date'],
-        status: j['status'] ?? 'Open',
+        status: j['status'] ?? 'Draft',
+        isLocked: j['is_locked'] ?? false,
+        billingAddress: j['billing_address'],
+        shippingAddress: j['shipping_address'],
         notes: j['notes'],
         items: ((j['items'] as List<dynamic>?) ?? [])
             .map((e) => InquiryItem.fromJson(e as Map<String, dynamic>))
@@ -514,6 +535,8 @@ class Inquiry {
         'lead_id': leadId,
         'inquiry_date': inquiryDate,
         'status': status,
+        'billing_address': billingAddress,
+        'shipping_address': shippingAddress,
         'notes': notes,
         'items': items.map((e) => e.toJson()).toList(),
       };
@@ -600,7 +623,14 @@ class Quotation {
   int customerId;
   String? quotationDate;
   String? validUntil;
-  String status; // Draft | Sent | Accepted | Rejected | Expired | Converted
+  String status; // Draft | Submitted | Approved | Cancelled
+  /// Server-set: the document has been moved on to the next step, so
+  /// its status is frozen (backend/app/core/workflow.py).
+  final bool isLocked;
+  /// Snapshot of the customer's addresses taken when the document is
+  /// raised -- edited per document, never written back to the master.
+  String? billingAddress;
+  String? shippingAddress;
   String? notes;
   double subtotal;
   double discountAmount;
@@ -616,6 +646,9 @@ class Quotation {
     this.quotationDate,
     this.validUntil,
     this.status = 'Draft',
+    this.isLocked = false,
+    this.billingAddress,
+    this.shippingAddress,
     this.notes,
     this.subtotal = 0,
     this.discountAmount = 0,
@@ -632,6 +665,9 @@ class Quotation {
         quotationDate: j['quotation_date'],
         validUntil: j['valid_until'],
         status: j['status'] ?? 'Draft',
+        isLocked: j['is_locked'] ?? false,
+        billingAddress: j['billing_address'],
+        shippingAddress: j['shipping_address'],
         notes: j['notes'],
         subtotal: (j['subtotal'] ?? 0).toDouble(),
         discountAmount: (j['discount_amount'] ?? 0).toDouble(),
@@ -649,6 +685,8 @@ class Quotation {
         'quotation_date': quotationDate,
         'valid_until': validUntil,
         'status': status,
+        'billing_address': billingAddress,
+        'shipping_address': shippingAddress,
         'notes': notes,
         'items': items.map((e) => e.toJson()).toList(),
       };
@@ -660,7 +698,14 @@ class SalesOrder {
   int? quotationId;
   int customerId;
   String? orderDate;
-  String status; // Pending | Confirmed | Delivered | Cancelled
+  String status; // Draft | Submitted | Approved | Cancelled
+  /// Server-set: the document has been moved on to the next step, so
+  /// its status is frozen (backend/app/core/workflow.py).
+  final bool isLocked;
+  /// Snapshot of the customer's addresses taken when the document is
+  /// raised -- edited per document, never written back to the master.
+  String? billingAddress;
+  String? shippingAddress;
   String? notes;
   double subtotal;
   double discountAmount;
@@ -674,7 +719,10 @@ class SalesOrder {
     this.quotationId,
     required this.customerId,
     this.orderDate,
-    this.status = 'Pending',
+    this.status = 'Draft',
+    this.isLocked = false,
+    this.billingAddress,
+    this.shippingAddress,
     this.notes,
     this.subtotal = 0,
     this.discountAmount = 0,
@@ -689,7 +737,10 @@ class SalesOrder {
         quotationId: j['quotation_id'],
         customerId: j['customer_id'],
         orderDate: j['order_date'],
-        status: j['status'] ?? 'Pending',
+        status: j['status'] ?? 'Draft',
+        isLocked: j['is_locked'] ?? false,
+        billingAddress: j['billing_address'],
+        shippingAddress: j['shipping_address'],
         notes: j['notes'],
         subtotal: (j['subtotal'] ?? 0).toDouble(),
         discountAmount: (j['discount_amount'] ?? 0).toDouble(),
@@ -706,6 +757,8 @@ class SalesOrder {
         'customer_id': customerId,
         'order_date': orderDate,
         'status': status,
+        'billing_address': billingAddress,
+        'shipping_address': shippingAddress,
         'notes': notes,
         'items': items.map((e) => e.toJson()).toList(),
       };

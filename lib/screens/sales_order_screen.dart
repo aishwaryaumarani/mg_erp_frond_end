@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
+import '../services/document_pdf.dart';
+import '../widgets/doc_detail_page.dart';
+import '../widgets/doc_address_fields.dart';
+import '../widgets/doc_form_page.dart';
 import '../widgets/doc_items_editor.dart';
 import '../widgets/quick_add.dart';
 import '../widgets/status_badge.dart';
-
-const _orderStatuses = ['Pending', 'Confirmed', 'Delivered', 'Cancelled'];
+import '../widgets/workflow_actions.dart';
 
 /// Sales Order screen -- the last stop of the Sales flow implemented so
 /// far (Lead -> Customer -> Inquiry -> Quotation -> Sales Order). Orders
@@ -60,6 +63,40 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
     }
   }
 
+  String _productName(int? id) {
+    final matches = _products.where((p) => p.id == id);
+    return matches.isEmpty ? 'Product #$id' : '${matches.first.name} [${matches.first.productCode}]';
+  }
+
+  /// The read-only shape shared by the detail screen and the PDF.
+  DocumentView _viewOf(SalesOrder o) => DocumentView(
+        docType: 'Sales Order',
+        docNo: o.orderNo ?? '#${o.id}',
+        status: o.status,
+        isLocked: o.isLocked,
+        customer: _customerName(o.customerId),
+        fields: {
+          'Order date': o.orderDate ?? '--',
+          if (o.quotationId != null) 'From quotation': '#${o.quotationId}',
+        },
+        billingAddress: o.billingAddress,
+        shippingAddress: o.shippingAddress,
+        hasPricing: true,
+        lines: o.items
+            .map((e) => DocLineView(
+                  product: _productName(e.productId),
+                  quantity: e.quantity,
+                  unitPrice: e.unitPrice,
+                  discountPercent: e.discountPercent,
+                  lineTotal: e.lineSubtotal,
+                ))
+            .toList(),
+        subtotal: o.subtotal,
+        taxAmount: o.taxAmount,
+        totalAmount: o.totalAmount,
+        notes: o.notes,
+      );
+
   String _customerName(int id) {
     final matches = _customers.where((c) => c.id == id);
     return matches.isEmpty ? 'Customer #$id' : matches.first.name;
@@ -81,25 +118,6 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
     if (result == null) return;
     try {
       await ApiService.instance.update('/api/sales-orders/${order.id}', result.toJson());
-      _load();
-    } catch (e) {
-      _showError(e);
-    }
-  }
-
-  Future<void> _setStatus(SalesOrder order, String status) async {
-    try {
-      final updated = SalesOrder(
-        id: order.id,
-        orderNo: order.orderNo,
-        quotationId: order.quotationId,
-        customerId: order.customerId,
-        orderDate: order.orderDate,
-        status: status,
-        notes: order.notes,
-        items: order.items,
-      );
-      await ApiService.instance.update('/api/sales-orders/${order.id}', updated.toJson());
       _load();
     } catch (e) {
       _showError(e);
@@ -209,28 +227,48 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                DropdownButton<String>(
-                                  value: o.status,
-                                  underline: const SizedBox(),
-                                  items: _orderStatuses
-                                      .map((s) => DropdownMenuItem(value: s, child: StatusBadge(status: s)))
-                                      .toList(),
-                                  onChanged: (v) {
-                                    if (v != null && v != o.status) _setStatus(o, v);
-                                  },
+                                StatusBadge(status: o.status),
+                                const SizedBox(width: 8),
+                                WorkflowActions(
+                                  resourcePath: '/api/sales-orders/',
+                                  id: o.id,
+                                  status: o.status,
+                                  isLocked: o.isLocked,
+                                  onChanged: _load,
+                                  onError: _showError,
                                 ),
+                                const SizedBox(width: 8),
+                                // Deliveries and invoices only come off an
+                                // approved order -- and unlike the earlier
+                                // steps, an order can raise several of them.
+                                if (canMoveOn(o.status)) ...[
+                                  IconButton(
+                                    icon: const Icon(Icons.local_shipping_outlined),
+                                    tooltip: 'Create Delivery',
+                                    onPressed: () => _createDelivery(o),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.description_outlined),
+                                    tooltip: 'Create Invoice',
+                                    onPressed: () => _createInvoice(o),
+                                  ),
+                                ],
                                 IconButton(
-                                  icon: const Icon(Icons.local_shipping_outlined),
-                                  tooltip: 'Create Delivery',
-                                  onPressed: () => _createDelivery(o),
+                                  icon: const Icon(Icons.visibility_outlined),
+                                  tooltip: 'View details / PDF',
+                                  onPressed: () => DocDetailPage.open(context, _viewOf(o)),
                                 ),
+                                if (canEditDocument(o.status, o.isLocked))
+                                  IconButton(
+                                    icon: const Icon(Icons.edit_outlined),
+                                    tooltip: 'Edit',
+                                    onPressed: () => _edit(o),
+                                  ),
                                 IconButton(
-                                  icon: const Icon(Icons.description_outlined),
-                                  tooltip: 'Create Invoice',
-                                  onPressed: () => _createInvoice(o),
+                                  icon: const Icon(Icons.delete_outline),
+                                  tooltip: o.isLocked ? 'Has a delivery or invoice -- cannot be deleted' : 'Delete',
+                                  onPressed: o.isLocked ? null : () => _delete(o),
                                 ),
-                                IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(o), tooltip: 'Edit'),
-                                IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(o), tooltip: 'Delete'),
                               ],
                             ),
                           );
@@ -244,7 +282,7 @@ class _SalesOrderScreenState extends State<SalesOrderScreen> {
 }
 
 /// Public so quotation_screen.dart can reuse it to build the "Convert to
-/// Sales Order" pre-filled dialog.
+/// Sales Order" pre-filled form.
 Future<SalesOrder?> openSalesOrderForm(
   BuildContext context, {
   required SalesOrder? existing,
@@ -254,21 +292,74 @@ Future<SalesOrder?> openSalesOrderForm(
 }) {
   int? customerId = existing?.customerId ?? (customers.isEmpty ? null : customers.first.id);
   final orderDate = TextEditingController(text: existing?.orderDate ?? DateTime.now().toIso8601String().substring(0, 10));
+  final billing = TextEditingController(text: existing?.billingAddress ?? '');
+  final shipping = TextEditingController(text: existing?.shippingAddress ?? '');
   final notes = TextEditingController(text: existing?.notes ?? '');
   // Backfill each line's tax rate (not a backend field) from the Tax list
   // so the live total preview is correct immediately -- see
   // models.dart withTaxRates().
   List<DocLineItem> items = existing == null ? [] : withTaxRates(existing.items, taxes);
 
-  return showDialog<SalesOrder>(
-    context: context,
-    builder: (ctx) => StatefulBuilder(builder: (ctx, setState) {
-      return AlertDialog(
-        title: Text(existing == null ? 'New Sales Order' : 'Edit Sales Order'),
-        content: SizedBox(
-          width: 560,
-          child: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
+  if (existing == null) {
+    syncAddressesToCustomer(
+      previous: null,
+      next: customerById(customers, customerId),
+      billing: billing,
+      shipping: shipping,
+    );
+  }
+
+  return openDocFormPage<SalesOrder>(context, (ctx) {
+    return StatefulBuilder(builder: (ctx, setState) {
+      void pickCustomer(int? id) {
+        final previous = customerById(customers, customerId);
+        setState(() {
+          customerId = id;
+          syncAddressesToCustomer(
+            previous: previous,
+            next: customerById(customers, id),
+            billing: billing,
+            shipping: shipping,
+          );
+        });
+      }
+
+      return DocFormPage(
+        title: existing == null ? 'New Sales Order' : 'Edit Sales Order',
+        subtitle: existing?.orderNo,
+        onSave: () {
+          if (customerId == null) {
+            showFormError(ctx, 'Pick a customer for this order.');
+            return;
+          }
+          if (orderDate.text.trim().isEmpty) {
+            showFormError(ctx, 'Order date is required (YYYY-MM-DD).');
+            return;
+          }
+          if (items.isEmpty) {
+            showFormError(ctx, 'A sales order needs at least one line item.');
+            return;
+          }
+          Navigator.pop(
+            ctx,
+            SalesOrder(
+              id: existing?.id,
+              orderNo: existing?.orderNo,
+              quotationId: existing?.quotationId,
+              customerId: customerId!,
+              orderDate: orderDate.text.trim(),
+              status: existing?.status ?? 'Pending',
+              billingAddress: billing.text.trim().isEmpty ? null : billing.text.trim(),
+              shippingAddress: shipping.text.trim().isEmpty ? null : shipping.text.trim(),
+              notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
+              items: items,
+            ),
+          );
+        },
+        children: [
+          DocFormSection(
+            title: 'Customer & date',
+            children: [
               QuickAddDropdown<Customer>(
                 label: 'Customer',
                 value: customerId,
@@ -279,18 +370,25 @@ Future<SalesOrder?> openSalesOrderForm(
                 allowUnknownValue: true,
                 onCreate: quickAddCustomer,
                 // `customers` is the calling screen's own list, so a
-                // customer added here survives cancelling this dialog.
-                onCreated: (c) => setState(() {
+                // customer added here survives cancelling this form.
+                onCreated: (c) {
                   customers.add(c);
-                  customerId = c.id;
-                }),
-                onChanged: (v) => setState(() => customerId = v),
+                  pickCustomer(c.id);
+                },
+                onChanged: pickCustomer,
               ),
               const SizedBox(height: 12),
               TextField(controller: orderDate, decoration: const InputDecoration(labelText: 'Order Date (YYYY-MM-DD)')),
-              const SizedBox(height: 12),
-              TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notes'), maxLines: 2),
-              const SizedBox(height: 16),
+            ],
+          ),
+          DocFormSection(
+            title: 'Addresses',
+            hint: "Filled in from the customer master -- edit here for a one-off billing or delivery address.",
+            children: [DocAddressFields(billing: billing, shipping: shipping)],
+          ),
+          DocFormSection(
+            title: 'Items',
+            children: [
               DocLineItemsEditor(
                 products: products,
                 taxes: taxes,
@@ -298,32 +396,16 @@ Future<SalesOrder?> openSalesOrderForm(
                 onChanged: (updated) => items = updated,
                 onProductCreated: products.add,
               ),
-            ]),
+            ],
           ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              if (customerId == null || orderDate.text.trim().isEmpty || items.isEmpty) return;
-              Navigator.pop(
-                ctx,
-                SalesOrder(
-                  id: existing?.id,
-                  orderNo: existing?.orderNo,
-                  quotationId: existing?.quotationId,
-                  customerId: customerId!,
-                  orderDate: orderDate.text.trim(),
-                  status: existing?.status ?? 'Pending',
-                  notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
-                  items: items,
-                ),
-              );
-            },
-            child: const Text('Save'),
+          DocFormSection(
+            title: 'Notes',
+            children: [
+              TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notes'), maxLines: 3),
+            ],
           ),
         ],
       );
-    }),
-  );
+    });
+  });
 }

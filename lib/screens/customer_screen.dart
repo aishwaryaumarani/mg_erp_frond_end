@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
+import '../widgets/grade_field.dart';
 import '../widgets/master_crud_screen.dart';
 
 const _statusOptions = ['Active', 'Inactive'];
@@ -22,6 +23,7 @@ class CustomerScreen extends StatelessWidget {
         'Outstanding: reflects once Sales module is live',
       ].whereType<String>().join(' • '),
       statusOf: (c) => c.status,
+      gradeOf: (c) => c.grade,
       openForm: openForm,
     );
   }
@@ -42,6 +44,7 @@ class CustomerScreen extends StatelessWidget {
     final paymentTerms = TextEditingController(text: existing?.paymentTerms ?? '');
     final openingBalance = TextEditingController(text: existing?.openingBalance.toString() ?? '0');
     String status = existing?.status ?? 'Active';
+    String? grade = existing?.grade;
 
     return showDialog<Customer>(
       context: context,
@@ -96,6 +99,8 @@ class CustomerScreen extends StatelessWidget {
                 const SizedBox(height: 12),
                 TextField(controller: paymentTerms, decoration: const InputDecoration(labelText: 'Payment Terms')),
                 const SizedBox(height: 12),
+                GradeDropdown(value: grade, onChanged: (v) => setState(() => grade = v)),
+                const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   value: status,
                   decoration: const InputDecoration(labelText: 'Status'),
@@ -126,6 +131,7 @@ class CustomerScreen extends StatelessWidget {
                     creditLimit: double.tryParse(creditLimit.text.trim()) ?? 0,
                     paymentTerms: paymentTerms.text.trim().isEmpty ? null : paymentTerms.text.trim(),
                     openingBalance: double.tryParse(openingBalance.text.trim()) ?? 0,
+                    grade: grade,
                     status: status,
                   ),
                 );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
+import '../widgets/grade_field.dart';
 import '../widgets/status_badge.dart';
 
 const _leadStatuses = ['New', 'Contacted', 'Qualified', 'Converted', 'Lost'];
@@ -27,6 +28,7 @@ class _LeadScreenState extends State<LeadScreen> {
   @override
   void initState() {
     super.initState();
+    GradeOptions.ensureLoaded();
     _load();
   }
 
@@ -199,6 +201,10 @@ class _LeadScreenState extends State<LeadScreen> {
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                if (lead.grade != null && lead.grade!.isNotEmpty) ...[
+                                  GradeBadge(grade: lead.grade!),
+                                  const SizedBox(width: 8),
+                                ],
                                 StatusBadge(status: lead.status),
                                 const SizedBox(width: 8),
                                 if (lead.status != 'Converted')
@@ -241,6 +247,7 @@ Future<Lead?> _openForm(BuildContext context, Lead? existing) {
   final notes = TextEditingController(text: existing?.notes ?? '');
   String source = existing?.source ?? _leadSources.first;
   String status = existing?.status ?? 'New';
+  String? grade = existing?.grade;
 
   return showDialog<Lead>(
     context: context,
@@ -285,6 +292,8 @@ Future<Lead?> _openForm(BuildContext context, Lead? existing) {
                 ),
               ]),
               const SizedBox(height: 12),
+              GradeDropdown(value: grade, onChanged: (v) => setState(() => grade = v)),
+              const SizedBox(height: 12),
               TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notes'), maxLines: 2),
             ]),
           ),
@@ -305,6 +314,7 @@ Future<Lead?> _openForm(BuildContext context, Lead? existing) {
                   email: email.text.trim().isEmpty ? null : email.text.trim(),
                   source: source,
                   status: status,
+                  grade: grade,
                   notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
                   convertedCustomerId: existing?.convertedCustomerId,
                 ),

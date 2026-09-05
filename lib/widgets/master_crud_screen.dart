@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import 'grade_field.dart';
 import 'status_badge.dart';
 import '../theme/app_theme.dart';
 
@@ -16,6 +17,9 @@ class MasterCrudScreen<T> extends StatefulWidget {
   final String Function(T) titleOf;
   final String Function(T)? subtitleOf;
   final String Function(T)? statusOf;
+  /// Optional customer-grade pill shown before the status badge; return
+  /// null for records that carry no grade (see widgets/grade_field.dart).
+  final String? Function(T)? gradeOf;
   final Future<T?> Function(BuildContext context, T? existing) openForm;
   final bool searchable;
 
@@ -29,6 +33,7 @@ class MasterCrudScreen<T> extends StatefulWidget {
     required this.titleOf,
     this.subtitleOf,
     this.statusOf,
+    this.gradeOf,
     required this.openForm,
     this.searchable = true,
   });
@@ -46,6 +51,8 @@ class _MasterCrudScreenState<T> extends State<MasterCrudScreen<T>> {
   @override
   void initState() {
     super.initState();
+    // Only the grade-carrying masters (Customer) need the server's list.
+    if (widget.gradeOf != null) GradeOptions.ensureLoaded();
     _load();
   }
 
@@ -275,6 +282,13 @@ class _MasterCrudScreenState<T> extends State<MasterCrudScreen<T>> {
                                   trailing: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
+                                      if (widget.gradeOf?.call(item)
+                                              ?.isNotEmpty ??
+                                          false) ...[
+                                        GradeBadge(
+                                            grade: widget.gradeOf!(item)!),
+                                        const SizedBox(width: 8),
+                                      ],
                                       if (widget.statusOf != null) ...[
                                         StatusBadge(
                                             status: widget.statusOf!(item)),

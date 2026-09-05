@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
+import '../services/document_pdf.dart';
+import '../widgets/doc_detail_page.dart';
+import '../widgets/doc_address_fields.dart';
+import '../widgets/doc_form_page.dart';
 import '../widgets/status_badge.dart';
+import '../widgets/workflow_actions.dart';
 import '../widgets/quick_add.dart';
 import 'quotation_screen.dart';
-
-const _inquiryStatuses = ['Open', 'Quoted', 'Closed', 'Cancelled'];
 
 /// Sales Inquiry screen -- first step after a Lead becomes a Customer
 /// (spec: Lead -> Customer -> Inquiry -> Quotation -> Sales Order). Lines
@@ -61,6 +64,32 @@ class _InquiryScreenState extends State<InquiryScreen> {
       });
     }
   }
+
+  String _productName(int? id) {
+    final matches = _products.where((p) => p.id == id);
+    return matches.isEmpty ? 'Product #$id' : '${matches.first.name} [${matches.first.productCode}]';
+  }
+
+  /// The read-only shape shared by the detail screen and the PDF, so what
+  /// is printed is exactly what is shown.
+  DocumentView _viewOf(Inquiry inquiry) => DocumentView(
+        docType: 'Sales Inquiry',
+        docNo: inquiry.inquiryNo ?? '#${inquiry.id}',
+        status: inquiry.status,
+        isLocked: inquiry.isLocked,
+        customer: _customerName(inquiry.customerId),
+        fields: {
+          'Inquiry date': inquiry.inquiryDate ?? '--',
+          if (inquiry.leadId != null) 'From lead': '#${inquiry.leadId}',
+        },
+        billingAddress: inquiry.billingAddress,
+        shippingAddress: inquiry.shippingAddress,
+        hasPricing: false, // an inquiry is asking what they want, not what it costs
+        lines: inquiry.items
+            .map((e) => DocLineView(product: _productName(e.productId), quantity: e.quantity))
+            .toList(),
+        notes: inquiry.notes,
+      );
 
   String _customerName(int? id) {
     if (id == null) return 'No customer yet';
@@ -191,14 +220,42 @@ class _InquiryScreenState extends State<InquiryScreen> {
                               children: [
                                 StatusBadge(status: inquiry.status),
                                 const SizedBox(width: 8),
-                                if (inquiry.status == 'Open')
+                                WorkflowActions(
+                                  resourcePath: '/api/inquiries/',
+                                  id: inquiry.id,
+                                  status: inquiry.status,
+                                  isLocked: inquiry.isLocked,
+                                  onChanged: _load,
+                                  onError: _showError,
+                                ),
+                                const SizedBox(width: 8),
+                                // Only an approved inquiry can be quoted --
+                                // the backend refuses anything else.
+                                if (canMoveOn(inquiry.status) && !inquiry.isLocked)
                                   OutlinedButton.icon(
                                     onPressed: () => _createQuotation(inquiry),
                                     icon: const Icon(Icons.request_quote_outlined, size: 18),
                                     label: const Text('Quote'),
                                   ),
-                                IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(inquiry), tooltip: 'Edit'),
-                                IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(inquiry), tooltip: 'Delete'),
+                                IconButton(
+                                  icon: const Icon(Icons.visibility_outlined),
+                                  tooltip: 'View details / PDF',
+                                  onPressed: () => DocDetailPage.open(context, _viewOf(inquiry)),
+                                ),
+                                // Editing disappears entirely once the
+                                // inquiry is submitted -- view is all that's
+                                // left, matching the backend's rule.
+                                if (canEditDocument(inquiry.status, inquiry.isLocked))
+                                  IconButton(
+                                    icon: const Icon(Icons.edit_outlined),
+                                    tooltip: 'Edit',
+                                    onPressed: () => _edit(inquiry),
+                                  ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline),
+                                  tooltip: inquiry.isLocked ? 'Already quoted -- cannot be deleted' : 'Delete',
+                                  onPressed: inquiry.isLocked ? null : () => _delete(inquiry),
+                                ),
                               ],
                             ),
                           );
@@ -219,6 +276,8 @@ Future<Inquiry?> _openInquiryForm(
 ) {
   int? customerId = existing?.customerId ?? (customers.isEmpty ? null : customers.first.id);
   final inquiryDate = TextEditingController(text: existing?.inquiryDate ?? DateTime.now().toIso8601String().substring(0, 10));
+  final billing = TextEditingController(text: existing?.billingAddress ?? '');
+  final shipping = TextEditingController(text: existing?.shippingAddress ?? '');
   final notes = TextEditingController(text: existing?.notes ?? '');
   List<InquiryItem> items = existing?.items.map((e) => InquiryItem(
         id: e.id,
@@ -231,15 +290,64 @@ Future<Inquiry?> _openInquiryForm(
   // TextFormField(initialValue: ...) isn't safe once rows can be deleted.
   final qtyCtrls = items.map((e) => TextEditingController(text: e.quantity.toString())).toList();
 
-  return showDialog<Inquiry>(
-    context: context,
-    builder: (ctx) => StatefulBuilder(builder: (ctx, setState) {
-      return AlertDialog(
-        title: Text(existing == null ? 'New Inquiry' : 'Edit Inquiry'),
-        content: SizedBox(
-          width: 520,
-          child: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
+  // A new inquiry starts with the pre-selected customer's addresses; an
+  // existing one keeps whatever was saved on the document.
+  if (existing == null) {
+    syncAddressesToCustomer(
+      previous: null,
+      next: customerById(customers, customerId),
+      billing: billing,
+      shipping: shipping,
+    );
+  }
+
+  return openDocFormPage<Inquiry>(context, (ctx) {
+    return StatefulBuilder(builder: (ctx, setState) {
+      void pickCustomer(int? id) {
+        final previous = customerById(customers, customerId);
+        setState(() {
+          customerId = id;
+          syncAddressesToCustomer(
+            previous: previous,
+            next: customerById(customers, id),
+            billing: billing,
+            shipping: shipping,
+          );
+        });
+      }
+
+      return DocFormPage(
+        title: existing == null ? 'New Inquiry' : 'Edit Inquiry',
+        subtitle: existing?.inquiryNo,
+        onSave: () {
+          if (customerId == null) {
+            showFormError(ctx, 'Pick a customer for this inquiry.');
+            return;
+          }
+          if (inquiryDate.text.trim().isEmpty) {
+            showFormError(ctx, 'Inquiry date is required (YYYY-MM-DD).');
+            return;
+          }
+          Navigator.pop(
+            ctx,
+            Inquiry(
+              id: existing?.id,
+              inquiryNo: existing?.inquiryNo,
+              customerId: customerId,
+              leadId: existing?.leadId,
+              inquiryDate: inquiryDate.text.trim(),
+              status: existing?.status ?? 'Open',
+              billingAddress: billing.text.trim().isEmpty ? null : billing.text.trim(),
+              shippingAddress: shipping.text.trim().isEmpty ? null : shipping.text.trim(),
+              notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
+              items: items,
+            ),
+          );
+        },
+        children: [
+          DocFormSection(
+            title: 'Customer & date',
+            children: [
               QuickAddDropdown<Customer>(
                 label: 'Customer',
                 value: customerId,
@@ -250,34 +358,29 @@ Future<Inquiry?> _openInquiryForm(
                 allowUnknownValue: true,
                 onCreate: quickAddCustomer,
                 // `customers` is the screen's own list, so a customer added
-                // here is still there if the dialog is cancelled.
-                onCreated: (c) => setState(() {
+                // here is still there if this form is cancelled.
+                onCreated: (c) {
                   customers.add(c);
-                  customerId = c.id;
-                }),
-                onChanged: (v) => setState(() => customerId = v),
+                  pickCustomer(c.id);
+                },
+                onChanged: pickCustomer,
               ),
               const SizedBox(height: 12),
               TextField(controller: inquiryDate, decoration: const InputDecoration(labelText: 'Inquiry Date (YYYY-MM-DD)')),
-              const SizedBox(height: 12),
-              TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notes'), maxLines: 2),
-              const SizedBox(height: 16),
-              Row(children: [
-                Text('What are they asking about?', style: Theme.of(ctx).textTheme.titleSmall),
-                const Spacer(),
-                TextButton.icon(
-                  onPressed: () => setState(() {
-                    final item = InquiryItem();
-                    items.add(item);
-                    qtyCtrls.add(TextEditingController(text: item.quantity.toString()));
-                  }),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add Line'),
-                ),
-              ]),
+            ],
+          ),
+          DocFormSection(
+            title: 'Addresses',
+            hint: "Filled in from the customer master -- edit here for a one-off billing or delivery address.",
+            children: [DocAddressFields(billing: billing, shipping: shipping)],
+          ),
+          DocFormSection(
+            title: 'What are they asking about?',
+            hint: 'Product and quantity only -- pricing is added when this becomes a Quotation.',
+            children: [
               if (items.isEmpty)
                 const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
+                  padding: EdgeInsets.only(bottom: 8),
                   child: Text('No lines yet. Add at least one product of interest.'),
                 ),
               for (int i = 0; i < items.length; i++)
@@ -317,6 +420,7 @@ Future<Inquiry?> _openInquiryForm(
                       const SizedBox(width: 8),
                       IconButton(
                         icon: const Icon(Icons.delete_outline),
+                        tooltip: 'Remove line',
                         onPressed: () => setState(() {
                           items.removeAt(i);
                           qtyCtrls.removeAt(i).dispose();
@@ -325,32 +429,28 @@ Future<Inquiry?> _openInquiryForm(
                     ],
                   ),
                 ),
-            ]),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              if (customerId == null || inquiryDate.text.trim().isEmpty) return;
-              Navigator.pop(
-                ctx,
-                Inquiry(
-                  id: existing?.id,
-                  inquiryNo: existing?.inquiryNo,
-                  customerId: customerId,
-                  leadId: existing?.leadId,
-                  inquiryDate: inquiryDate.text.trim(),
-                  status: existing?.status ?? 'Open',
-                  notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
-                  items: items,
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => setState(() {
+                    final item = InquiryItem();
+                    items.add(item);
+                    qtyCtrls.add(TextEditingController(text: item.quantity.toString()));
+                  }),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Line'),
                 ),
-              );
-            },
-            child: const Text('Save'),
+              ),
+            ],
+          ),
+          DocFormSection(
+            title: 'Notes',
+            children: [
+              TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notes'), maxLines: 3),
+            ],
           ),
         ],
       );
-    }),
-  );
+    });
+  });
 }

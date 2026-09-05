@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
+import '../services/document_pdf.dart';
+import '../widgets/doc_detail_page.dart';
+import '../widgets/doc_address_fields.dart';
+import '../widgets/doc_form_page.dart';
 import '../widgets/doc_items_editor.dart';
 import '../widgets/quick_add.dart';
 import '../widgets/status_badge.dart';
-import 'sales_order_screen.dart';
-
-// Includes 'Converted' -- backend/app/routers/quotations.py sets this
-// automatically when a Quotation is turned into a Sales Order. It has to
-// be in this list or the status DropdownButton throws (its value must
-// match one of its items).
-const _quotationStatuses = ['Draft', 'Sent', 'Accepted', 'Rejected', 'Expired', 'Converted'];
+import '../widgets/workflow_actions.dart';
 
 /// Quotation screen -- sits between Inquiry and Sales Order. A Quotation
 /// can be raised standalone ("New Quotation") or, more commonly, from an
@@ -67,6 +65,43 @@ class _QuotationScreenState extends State<QuotationScreen> {
     }
   }
 
+  String _productName(int? id) {
+    final matches = _products.where((p) => p.id == id);
+    return matches.isEmpty ? 'Product #$id' : '${matches.first.name} [${matches.first.productCode}]';
+  }
+
+  /// The read-only shape shared by the detail screen and the PDF. Line
+  /// amounts are shown pre-tax so they add up to the server's subtotal;
+  /// tax lands once in the totals block.
+  DocumentView _viewOf(Quotation q) => DocumentView(
+        docType: 'Quotation',
+        docNo: q.quotationNo ?? '#${q.id}',
+        status: q.status,
+        isLocked: q.isLocked,
+        customer: _customerName(q.customerId),
+        fields: {
+          'Quotation date': q.quotationDate ?? '--',
+          if (q.validUntil != null && q.validUntil!.isNotEmpty) 'Valid until': q.validUntil!,
+          if (q.inquiryId != null) 'From inquiry': '#${q.inquiryId}',
+        },
+        billingAddress: q.billingAddress,
+        shippingAddress: q.shippingAddress,
+        hasPricing: true,
+        lines: q.items
+            .map((e) => DocLineView(
+                  product: _productName(e.productId),
+                  quantity: e.quantity,
+                  unitPrice: e.unitPrice,
+                  discountPercent: e.discountPercent,
+                  lineTotal: e.lineSubtotal,
+                ))
+            .toList(),
+        subtotal: q.subtotal,
+        taxAmount: q.taxAmount,
+        totalAmount: q.totalAmount,
+        notes: q.notes,
+      );
+
   String _customerName(int id) {
     final matches = _customers.where((c) => c.id == id);
     return matches.isEmpty ? 'Customer #$id' : matches.first.name;
@@ -88,26 +123,6 @@ class _QuotationScreenState extends State<QuotationScreen> {
     if (result == null) return;
     try {
       await ApiService.instance.update('/api/quotations/${q.id}', result.toJson());
-      _load();
-    } catch (e) {
-      _showError(e);
-    }
-  }
-
-  Future<void> _setStatus(Quotation q, String status) async {
-    try {
-      final updated = Quotation(
-        id: q.id,
-        quotationNo: q.quotationNo,
-        inquiryId: q.inquiryId,
-        customerId: q.customerId,
-        quotationDate: q.quotationDate,
-        validUntil: q.validUntil,
-        status: status,
-        notes: q.notes,
-        items: q.items,
-      );
-      await ApiService.instance.update('/api/quotations/${q.id}', updated.toJson());
       _load();
     } catch (e) {
       _showError(e);
@@ -203,26 +218,40 @@ class _QuotationScreenState extends State<QuotationScreen> {
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                DropdownButton<String>(
-                                  value: q.status,
-                                  underline: const SizedBox(),
-                                  items: _quotationStatuses
-                                      .map((s) => DropdownMenuItem(value: s, child: StatusBadge(status: s)))
-                                      .toList(),
-                                  onChanged: q.status == 'Converted'
-                                      ? null // already turned into an order -- don't let the status be edited back
-                                      : (v) {
-                                          if (v != null && v != q.status) _setStatus(q, v);
-                                        },
+                                StatusBadge(status: q.status),
+                                const SizedBox(width: 8),
+                                WorkflowActions(
+                                  resourcePath: '/api/quotations/',
+                                  id: q.id,
+                                  status: q.status,
+                                  isLocked: q.isLocked,
+                                  onChanged: _load,
+                                  onError: _showError,
                                 ),
-                                if (q.status == 'Accepted' || q.status == 'Sent')
+                                const SizedBox(width: 8),
+                                // Only an approved quotation becomes an order.
+                                if (canMoveOn(q.status) && !q.isLocked)
                                   IconButton(
                                     icon: const Icon(Icons.receipt_long_outlined),
                                     tooltip: 'Convert to Sales Order',
                                     onPressed: () => _convertToOrder(q),
                                   ),
-                                IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(q), tooltip: 'Edit'),
-                                IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(q), tooltip: 'Delete'),
+                                IconButton(
+                                  icon: const Icon(Icons.visibility_outlined),
+                                  tooltip: 'View details / PDF',
+                                  onPressed: () => DocDetailPage.open(context, _viewOf(q)),
+                                ),
+                                if (canEditDocument(q.status, q.isLocked))
+                                  IconButton(
+                                    icon: const Icon(Icons.edit_outlined),
+                                    tooltip: 'Edit',
+                                    onPressed: () => _edit(q),
+                                  ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline),
+                                  tooltip: q.isLocked ? 'Already ordered -- cannot be deleted' : 'Delete',
+                                  onPressed: q.isLocked ? null : () => _delete(q),
+                                ),
                               ],
                             ),
                           );
@@ -236,7 +265,7 @@ class _QuotationScreenState extends State<QuotationScreen> {
 }
 
 /// Public so inquiry_screen.dart can reuse it to build the "Create
-/// Quotation from Inquiry" pre-filled dialog.
+/// Quotation from Inquiry" pre-filled form.
 Future<Quotation?> openQuotationForm(
   BuildContext context, {
   required Quotation? existing,
@@ -247,21 +276,78 @@ Future<Quotation?> openQuotationForm(
   int? customerId = existing?.customerId ?? (customers.isEmpty ? null : customers.first.id);
   final quotationDate = TextEditingController(text: existing?.quotationDate ?? DateTime.now().toIso8601String().substring(0, 10));
   final validUntil = TextEditingController(text: existing?.validUntil ?? '');
+  final billing = TextEditingController(text: existing?.billingAddress ?? '');
+  final shipping = TextEditingController(text: existing?.shippingAddress ?? '');
   final notes = TextEditingController(text: existing?.notes ?? '');
   // Backfill each line's tax rate (not a backend field) from the Tax list
   // so the live total preview is correct immediately, not just after the
   // user re-touches a row's Tax dropdown -- see models.dart withTaxRates().
   List<DocLineItem> items = existing == null ? [] : withTaxRates(existing.items, taxes);
 
-  return showDialog<Quotation>(
-    context: context,
-    builder: (ctx) => StatefulBuilder(builder: (ctx, setState) {
-      return AlertDialog(
-        title: Text(existing == null ? 'New Quotation' : 'Edit Quotation'),
-        content: SizedBox(
-          width: 560,
-          child: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
+  // New quotation -> start from the customer master. An existing one
+  // (including one just converted from an Inquiry, which carries the
+  // inquiry's addresses) keeps what's on the document.
+  if (existing == null) {
+    syncAddressesToCustomer(
+      previous: null,
+      next: customerById(customers, customerId),
+      billing: billing,
+      shipping: shipping,
+    );
+  }
+
+  return openDocFormPage<Quotation>(context, (ctx) {
+    return StatefulBuilder(builder: (ctx, setState) {
+      void pickCustomer(int? id) {
+        final previous = customerById(customers, customerId);
+        setState(() {
+          customerId = id;
+          syncAddressesToCustomer(
+            previous: previous,
+            next: customerById(customers, id),
+            billing: billing,
+            shipping: shipping,
+          );
+        });
+      }
+
+      return DocFormPage(
+        title: existing == null ? 'New Quotation' : 'Edit Quotation',
+        subtitle: existing?.quotationNo,
+        onSave: () {
+          if (customerId == null) {
+            showFormError(ctx, 'Pick a customer for this quotation.');
+            return;
+          }
+          if (quotationDate.text.trim().isEmpty) {
+            showFormError(ctx, 'Quotation date is required (YYYY-MM-DD).');
+            return;
+          }
+          if (items.isEmpty) {
+            showFormError(ctx, 'A quotation needs at least one line item.');
+            return;
+          }
+          Navigator.pop(
+            ctx,
+            Quotation(
+              id: existing?.id,
+              quotationNo: existing?.quotationNo,
+              inquiryId: existing?.inquiryId,
+              customerId: customerId!,
+              quotationDate: quotationDate.text.trim(),
+              validUntil: validUntil.text.trim().isEmpty ? null : validUntil.text.trim(),
+              status: existing?.status ?? 'Draft',
+              billingAddress: billing.text.trim().isEmpty ? null : billing.text.trim(),
+              shippingAddress: shipping.text.trim().isEmpty ? null : shipping.text.trim(),
+              notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
+              items: items,
+            ),
+          );
+        },
+        children: [
+          DocFormSection(
+            title: 'Customer & dates',
+            children: [
               QuickAddDropdown<Customer>(
                 label: 'Customer',
                 value: customerId,
@@ -272,12 +358,12 @@ Future<Quotation?> openQuotationForm(
                 allowUnknownValue: true,
                 onCreate: quickAddCustomer,
                 // `customers` is the calling screen's own list, so a
-                // customer added here survives cancelling this dialog.
-                onCreated: (c) => setState(() {
+                // customer added here survives cancelling this form.
+                onCreated: (c) {
                   customers.add(c);
-                  customerId = c.id;
-                }),
-                onChanged: (v) => setState(() => customerId = v),
+                  pickCustomer(c.id);
+                },
+                onChanged: pickCustomer,
               ),
               const SizedBox(height: 12),
               Row(children: [
@@ -285,9 +371,16 @@ Future<Quotation?> openQuotationForm(
                 const SizedBox(width: 12),
                 Expanded(child: TextField(controller: validUntil, decoration: const InputDecoration(labelText: 'Valid Until (YYYY-MM-DD)'))),
               ]),
-              const SizedBox(height: 12),
-              TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notes'), maxLines: 2),
-              const SizedBox(height: 16),
+            ],
+          ),
+          DocFormSection(
+            title: 'Addresses',
+            hint: "Filled in from the customer master -- edit here for a one-off billing or delivery address.",
+            children: [DocAddressFields(billing: billing, shipping: shipping)],
+          ),
+          DocFormSection(
+            title: 'Items',
+            children: [
               DocLineItemsEditor(
                 products: products,
                 taxes: taxes,
@@ -295,33 +388,16 @@ Future<Quotation?> openQuotationForm(
                 onChanged: (updated) => items = updated,
                 onProductCreated: products.add,
               ),
-            ]),
+            ],
           ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              if (customerId == null || quotationDate.text.trim().isEmpty || items.isEmpty) return;
-              Navigator.pop(
-                ctx,
-                Quotation(
-                  id: existing?.id,
-                  quotationNo: existing?.quotationNo,
-                  inquiryId: existing?.inquiryId,
-                  customerId: customerId!,
-                  quotationDate: quotationDate.text.trim(),
-                  validUntil: validUntil.text.trim().isEmpty ? null : validUntil.text.trim(),
-                  status: existing?.status ?? 'Draft',
-                  notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
-                  items: items,
-                ),
-              );
-            },
-            child: const Text('Save'),
+          DocFormSection(
+            title: 'Notes',
+            children: [
+              TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notes'), maxLines: 3),
+            ],
           ),
         ],
       );
-    }),
-  );
+    });
+  });
 }

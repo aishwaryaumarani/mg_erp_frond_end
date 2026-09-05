@@ -10,6 +10,7 @@ class StatusBadge extends StatelessWidget {
   Color _color(BuildContext context) {
     switch (status.toLowerCase()) {
       case 'active':
+      case 'approved':
       case 'paid':
       case 'confirmed':
       case 'accepted':
@@ -24,6 +25,8 @@ class StatusBadge extends StatelessWidget {
       case 'draft':
       case 'pending':
         return AppColors.slate;
+      case 'submitted':
+        return AppColors.amber;
       case 'partially paid':
       case 'partially delivered':
       case 'in progress':
