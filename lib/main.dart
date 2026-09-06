@@ -28,6 +28,7 @@ import 'screens/stock_ledger_screen.dart';
 import 'screens/stock_adjustment_screen.dart';
 import 'screens/task_screen.dart';
 import 'screens/coming_soon_screen.dart';
+import 'screens/report_screen.dart';
 import 'widgets/app_shell.dart';
 import 'theme/app_theme.dart';
 
@@ -214,29 +215,120 @@ class MiniErpApp extends StatelessWidget {
           NavLeaf(
               'Sales Report',
               Icons.show_chart,
-              (ctx) => const ComingSoonScreen(
-                  moduleName: 'Sales Report',
-                  phaseNote: 'Ships in Phase 7, once Sales documents exist to report on.')),
+              (ctx) => const ReportScreen(
+                    title: 'Sales Report',
+                    path: '/api/reports/sales',
+                    chartLabelKey: 'party',
+                    chartValueKey: 'total',
+                    barTitle: 'Top customers by sales',
+                    pieTitle: 'Share of sales',
+                    emptyMessage: 'No invoices were issued in this period.',
+                    columns: [
+                      ReportColumn('date', 'Date'),
+                      ReportColumn('document', 'Invoice'),
+                      ReportColumn('party', 'Customer'),
+                      ReportColumn('status', 'Status'),
+                      ReportColumn('taxable', 'Taxable', money: true),
+                      ReportColumn('tax', 'Tax', money: true),
+                      ReportColumn('total', 'Total', money: true),
+                      ReportColumn('paid', 'Received', money: true),
+                      ReportColumn('outstanding', 'Outstanding', money: true),
+                    ],
+                  )),
           NavLeaf(
               'Purchase Report',
               Icons.show_chart,
-              (ctx) => const ComingSoonScreen(
-                  moduleName: 'Purchase Report', phaseNote: 'Ships in Phase 7.')),
+              (ctx) => const ReportScreen(
+                    title: 'Purchase Report',
+                    path: '/api/reports/purchase',
+                    chartLabelKey: 'party',
+                    chartValueKey: 'total',
+                    barTitle: 'Top suppliers by purchases',
+                    pieTitle: 'Share of purchases',
+                    emptyMessage: 'No supplier invoices in this period.',
+                    columns: [
+                      ReportColumn('date', 'Date'),
+                      ReportColumn('document', 'Invoice'),
+                      ReportColumn('party', 'Supplier'),
+                      ReportColumn('status', 'Status'),
+                      ReportColumn('taxable', 'Taxable', money: true),
+                      ReportColumn('tax', 'Tax', money: true),
+                      ReportColumn('total', 'Total', money: true),
+                      ReportColumn('paid', 'Paid', money: true),
+                      ReportColumn('outstanding', 'Outstanding', money: true),
+                    ],
+                  )),
           NavLeaf(
               'Stock Report',
               Icons.show_chart,
-              (ctx) => const ComingSoonScreen(
-                  moduleName: 'Stock Report', phaseNote: 'Ships in Phase 7.')),
+              (ctx) => const ReportScreen(
+                    title: 'Stock Report',
+                    path: '/api/reports/stock',
+                    chartLabelKey: 'product',
+                    chartValueKey: 'value',
+                    chartStatusKey: 'status',
+                    barTitle: 'Highest stock value',
+                    pieTitle: 'Stock health',
+                    // A stock position is "now", not a period.
+                    dateFiltered: false,
+                    emptyMessage: 'No products yet.',
+                    columns: [
+                      ReportColumn('product_code', 'Code'),
+                      ReportColumn('product', 'Product'),
+                      ReportColumn('on_hand', 'On hand', numeric: true),
+                      ReportColumn('minimum', 'Minimum', numeric: true),
+                      ReportColumn('rate', 'Rate', money: true),
+                      ReportColumn('value', 'Value', money: true),
+                      ReportColumn('status', 'Status'),
+                    ],
+                  )),
           NavLeaf(
               'Receivable Report',
               Icons.show_chart,
-              (ctx) => const ComingSoonScreen(
-                  moduleName: 'Receivable Report', phaseNote: 'Ships in Phase 7.')),
+              (ctx) => const ReportScreen(
+                    title: 'Receivable Report',
+                    path: '/api/reports/receivables',
+                    chartLabelKey: 'party',
+                    chartValueKey: 'outstanding',
+                    barTitle: 'Who owes the most',
+                    pieTitle: 'Share of outstanding',
+                    // Outstanding is a running position, not a date range.
+                    dateFiltered: false,
+                    emptyMessage: 'Nothing outstanding -- every invoice is settled.',
+                    columns: [
+                      ReportColumn('party_code', 'Code'),
+                      ReportColumn('party', 'Customer'),
+                      ReportColumn('invoices', 'Open invoices', numeric: true),
+                      ReportColumn('billed', 'Billed', money: true),
+                      ReportColumn('paid', 'Received', money: true),
+                      ReportColumn('outstanding', 'Outstanding', money: true),
+                      ReportColumn('oldest_invoice', 'Oldest'),
+                      ReportColumn('days_overdue', 'Days', numeric: true),
+                    ],
+                  )),
           NavLeaf(
               'Payable Report',
               Icons.show_chart,
-              (ctx) => const ComingSoonScreen(
-                  moduleName: 'Payable Report', phaseNote: 'Ships in Phase 7.')),
+              (ctx) => const ReportScreen(
+                    title: 'Payable Report',
+                    path: '/api/reports/payables',
+                    chartLabelKey: 'party',
+                    chartValueKey: 'outstanding',
+                    barTitle: 'Who we owe the most',
+                    pieTitle: 'Share of outstanding',
+                    dateFiltered: false,
+                    emptyMessage: 'Nothing outstanding -- every supplier invoice is settled.',
+                    columns: [
+                      ReportColumn('party_code', 'Code'),
+                      ReportColumn('party', 'Supplier'),
+                      ReportColumn('invoices', 'Open invoices', numeric: true),
+                      ReportColumn('billed', 'Billed', money: true),
+                      ReportColumn('paid', 'Paid', money: true),
+                      ReportColumn('outstanding', 'Outstanding', money: true),
+                      ReportColumn('oldest_invoice', 'Oldest'),
+                      ReportColumn('days_overdue', 'Days', numeric: true),
+                    ],
+                  )),
           NavLeaf(
               'Trial Balance',
               Icons.balance_outlined,

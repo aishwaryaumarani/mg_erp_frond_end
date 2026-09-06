@@ -74,8 +74,11 @@ class ApiService {
     return (data as List<dynamic>?) ?? [];
   }
 
-  Future<Map<String, dynamic>> getOne(String path) async {
-    final res = await http.get(_uri(path), headers: _headers());
+  /// [query] is optional so single-object endpoints that take filters --
+  /// the reports, which return one {rows, summary} object for a date
+  /// range -- can use this too.
+  Future<Map<String, dynamic>> getOne(String path, {Map<String, dynamic>? query}) async {
+    final res = await http.get(_uri(path, query), headers: _headers());
     return _decode(res) as Map<String, dynamic>;
   }
 
