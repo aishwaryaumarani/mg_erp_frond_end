@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
+import '../services/document_pdf.dart';
+import '../widgets/doc_detail_page.dart';
+import '../widgets/doc_form_page.dart';
 import '../widgets/doc_items_editor.dart';
 import '../widgets/quick_add.dart';
 import '../widgets/status_badge.dart';
@@ -60,6 +63,60 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
       });
     }
   }
+
+  String _productName(int? id) {
+    final matches = _products.where((p) => p.id == id);
+    return matches.isEmpty ? 'Product #\$id' : '\${matches.first.name} [\${matches.first.productCode}]';
+  }
+
+  Tax? _taxOf(int? id) {
+    if (id == null) return null;
+    final matches = _taxes.where((t) => t.id == id);
+    return matches.isEmpty ? null : matches.first;
+  }
+
+  /// The printed purchase order: everything the supplier's copy carries,
+  /// shared by the on-screen view and the PDF.
+  DocumentView _viewOf(PurchaseOrder o) => DocumentView(
+        docType: 'Purchase Order',
+        docNo: o.orderNo ?? '#\${o.id}',
+        status: o.status,
+        isLocked: false,
+        customer: _supplierName(o.supplierId),
+        partyLabel: 'SUPPLIER (BILL FROM)',
+        fields: {
+          'Order date': o.orderDate ?? '--',
+          if ((o.dueDate ?? '').isNotEmpty) 'Due on': o.dueDate!,
+          if ((o.referenceNo ?? '').isNotEmpty) 'Reference no.': o.referenceNo!,
+          if ((o.otherReferences ?? '').isNotEmpty) 'Other references': o.otherReferences!,
+          if ((o.paymentTerms ?? '').isNotEmpty) 'Mode/terms of payment': o.paymentTerms!,
+          if ((o.dispatchedThrough ?? '').isNotEmpty) 'Dispatched through': o.dispatchedThrough!,
+          if ((o.destination ?? '').isNotEmpty) 'Destination': o.destination!,
+          if ((o.termsOfDelivery ?? '').isNotEmpty) 'Terms of delivery': o.termsOfDelivery!,
+        },
+        billingAddress: o.consigneeName == null && o.consigneeAddress == null
+            ? null
+            : [o.consigneeName, o.consigneeAddress].whereType<String>().join('\n'),
+        billingLabel: 'CONSIGNEE (SHIP TO)',
+        shippingLabel: '',
+        hasPricing: true,
+        lines: o.items.map((e) {
+          final tax = _taxOf(e.taxId);
+          return DocLineView(
+            product: _productName(e.productId),
+            quantity: e.quantity,
+            unitPrice: e.unitPrice,
+            discountPercent: e.discountPercent,
+            taxLabel: tax?.name,
+            taxPercent: tax?.ratePercent ?? 0,
+            lineTotal: e.lineSubtotal,
+          );
+        }).toList(),
+        subtotal: o.subtotal,
+        taxAmount: o.taxAmount,
+        totalAmount: o.totalAmount,
+        notes: o.notes,
+      );
 
   String _supplierName(int id) {
     final matches = _suppliers.where((s) => s.id == id);
@@ -230,6 +287,11 @@ class _PurchaseOrderScreenState extends State<PurchaseOrderScreen> {
                                   tooltip: 'Create Invoice',
                                   onPressed: () => _createInvoice(o),
                                 ),
+                                IconButton(
+                                  icon: const Icon(Icons.visibility_outlined),
+                                  tooltip: 'View details / PDF',
+                                  onPressed: () => DocDetailPage.open(context, _viewOf(o)),
+                                ),
                                 IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(o), tooltip: 'Edit'),
                                 IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(o), tooltip: 'Delete'),
                               ],
@@ -254,24 +316,72 @@ Future<PurchaseOrder?> openPurchaseOrderForm(
   required List<Tax> taxes,
 }) {
   int? supplierId = existing?.supplierId ?? (suppliers.isEmpty ? null : suppliers.first.id);
-  final orderDate = TextEditingController(text: existing?.orderDate ?? DateTime.now().toIso8601String().substring(0, 10));
+  final orderDate = TextEditingController(
+      text: existing?.orderDate ?? DateTime.now().toIso8601String().substring(0, 10));
+  final dueDate = TextEditingController(text: existing?.dueDate ?? '');
+  final referenceNo = TextEditingController(text: existing?.referenceNo ?? '');
+  final otherReferences = TextEditingController(text: existing?.otherReferences ?? '');
+  final paymentTerms = TextEditingController(text: existing?.paymentTerms ?? '');
+  final dispatchedThrough = TextEditingController(text: existing?.dispatchedThrough ?? '');
+  final destination = TextEditingController(text: existing?.destination ?? '');
+  final termsOfDelivery = TextEditingController(text: existing?.termsOfDelivery ?? '');
+  final consigneeName = TextEditingController(text: existing?.consigneeName ?? '');
+  final consigneeAddress = TextEditingController(text: existing?.consigneeAddress ?? '');
   final notes = TextEditingController(text: existing?.notes ?? '');
   // Backfill each line's tax rate (not a backend field) from the Tax list
   // so the live total preview is correct immediately -- see
   // models.dart withTaxRates().
   List<DocLineItem> items = existing == null ? [] : withTaxRates(existing.items, taxes);
 
-  return showDialog<PurchaseOrder>(
-    context: context,
-    builder: (ctx) => StatefulBuilder(builder: (ctx, setState) {
-      return AlertDialog(
-        title: Text(existing == null ? 'New Purchase Order' : 'Edit Purchase Order'),
-        content: SizedBox(
-          width: 560,
-          child: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
+  return openDocFormPage<PurchaseOrder>(context, (ctx) {
+    return StatefulBuilder(builder: (ctx, setState) {
+      return DocFormPage(
+        title: existing == null ? 'New Purchase Order' : 'Edit Purchase Order',
+        subtitle: existing?.orderNo,
+        onSave: () {
+          if (supplierId == null) {
+            showFormError(ctx, 'Pick the supplier this order goes to.');
+            return;
+          }
+          if (orderDate.text.trim().isEmpty) {
+            showFormError(ctx, 'Order date is required (YYYY-MM-DD).');
+            return;
+          }
+          if (items.isEmpty) {
+            showFormError(ctx, 'A purchase order needs at least one line item.');
+            return;
+          }
+          String? clean(TextEditingController c) =>
+              c.text.trim().isEmpty ? null : c.text.trim();
+          Navigator.pop(
+            ctx,
+            PurchaseOrder(
+              id: existing?.id,
+              orderNo: existing?.orderNo,
+              quotationId: existing?.quotationId,
+              supplierId: supplierId!,
+              orderDate: orderDate.text.trim(),
+              status: existing?.status ?? 'Draft',
+              dueDate: clean(dueDate),
+              referenceNo: clean(referenceNo),
+              otherReferences: clean(otherReferences),
+              paymentTerms: clean(paymentTerms),
+              dispatchedThrough: clean(dispatchedThrough),
+              destination: clean(destination),
+              termsOfDelivery: clean(termsOfDelivery),
+              consigneeName: clean(consigneeName),
+              consigneeAddress: clean(consigneeAddress),
+              notes: clean(notes),
+              items: items,
+            ),
+          );
+        },
+        children: [
+          DocFormSection(
+            title: 'Supplier & dates',
+            children: [
               QuickAddDropdown<Supplier>(
-                label: 'Supplier',
+                label: 'Supplier (bill from)',
                 value: supplierId,
                 options: suppliers,
                 idOf: (s) => s.id,
@@ -280,7 +390,7 @@ Future<PurchaseOrder?> openPurchaseOrderForm(
                 allowUnknownValue: true,
                 onCreate: quickAddSupplier,
                 // `suppliers` is the calling screen's own list, so a
-                // supplier added here survives cancelling this dialog.
+                // supplier added here survives cancelling this form.
                 onCreated: (s) => setState(() {
                   suppliers.add(s);
                   supplierId = s.id;
@@ -288,10 +398,50 @@ Future<PurchaseOrder?> openPurchaseOrderForm(
                 onChanged: (v) => setState(() => supplierId = v),
               ),
               const SizedBox(height: 12),
-              TextField(controller: orderDate, decoration: const InputDecoration(labelText: 'Order Date (YYYY-MM-DD)')),
+              Row(children: [
+                Expanded(child: TextField(controller: orderDate, decoration: const InputDecoration(labelText: 'Order Date (YYYY-MM-DD)'))),
+                const SizedBox(width: 12),
+                Expanded(child: TextField(controller: dueDate, decoration: const InputDecoration(labelText: 'Due on (YYYY-MM-DD)'))),
+              ]),
               const SizedBox(height: 12),
-              TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notes'), maxLines: 2),
-              const SizedBox(height: 16),
+              Row(children: [
+                Expanded(child: TextField(controller: referenceNo, decoration: const InputDecoration(labelText: 'Reference no. & date'))),
+                const SizedBox(width: 12),
+                Expanded(child: TextField(controller: otherReferences, decoration: const InputDecoration(labelText: 'Other references'))),
+              ]),
+            ],
+          ),
+          DocFormSection(
+            title: 'Consignee (ship to)',
+            hint: 'Where the goods are to be delivered, if that is not your own office.',
+            children: [
+              TextField(controller: consigneeName, decoration: const InputDecoration(labelText: 'Consignee name')),
+              const SizedBox(height: 12),
+              TextField(controller: consigneeAddress, decoration: const InputDecoration(labelText: 'Consignee address'), maxLines: 3),
+            ],
+          ),
+          DocFormSection(
+            title: 'Dispatch & terms',
+            hint: 'Printed on the order the supplier receives.',
+            children: [
+              Row(children: [
+                Expanded(child: TextField(controller: dispatchedThrough, decoration: const InputDecoration(labelText: 'Dispatched through'))),
+                const SizedBox(width: 12),
+                Expanded(child: TextField(controller: destination, decoration: const InputDecoration(labelText: 'Destination'))),
+              ]),
+              const SizedBox(height: 12),
+              TextField(controller: paymentTerms, decoration: const InputDecoration(labelText: 'Mode / terms of payment')),
+              const SizedBox(height: 12),
+              TextField(
+                controller: termsOfDelivery,
+                decoration: const InputDecoration(
+                    labelText: 'Terms of delivery', hintText: 'e.g. TILL 13 AUGUST'),
+              ),
+            ],
+          ),
+          DocFormSection(
+            title: 'Items',
+            children: [
               DocLineItemsEditor(
                 products: products,
                 taxes: taxes,
@@ -299,32 +449,16 @@ Future<PurchaseOrder?> openPurchaseOrderForm(
                 onChanged: (updated) => items = updated,
                 onProductCreated: products.add,
               ),
-            ]),
+            ],
           ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              if (supplierId == null || orderDate.text.trim().isEmpty || items.isEmpty) return;
-              Navigator.pop(
-                ctx,
-                PurchaseOrder(
-                  id: existing?.id,
-                  orderNo: existing?.orderNo,
-                  quotationId: existing?.quotationId,
-                  supplierId: supplierId!,
-                  orderDate: orderDate.text.trim(),
-                  status: existing?.status ?? 'Draft',
-                  notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
-                  items: items,
-                ),
-              );
-            },
-            child: const Text('Save'),
+          DocFormSection(
+            title: 'Notes',
+            children: [
+              TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notes'), maxLines: 3),
+            ],
           ),
         ],
       );
-    }),
-  );
+    });
+  });
 }

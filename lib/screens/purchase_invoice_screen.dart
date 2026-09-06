@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
+import '../services/document_pdf.dart';
+import '../widgets/doc_detail_page.dart';
+import 'invoice_import_screen.dart';
 import '../widgets/doc_items_editor.dart';
 import '../widgets/quick_add.dart';
 import '../widgets/status_badge.dart';
@@ -65,6 +68,60 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
       });
     }
   }
+
+  String _productName(int? id) {
+    final matches = _products.where((p) => p.id == id);
+    return matches.isEmpty ? 'Product #\$id' : '\${matches.first.name} [\${matches.first.productCode}]';
+  }
+
+  Tax? _taxOf(int? id) {
+    if (id == null) return null;
+    final matches = _taxes.where((t) => t.id == id);
+    return matches.isEmpty ? null : matches.first;
+  }
+
+  /// The read-only view of a supplier bill: who it is from, their own
+  /// invoice number, the goods, the freight/labour charges and what is
+  /// still owed. Same shape the PDF is built from, so the two agree.
+  DocumentView _viewOf(PurchaseInvoice inv) => DocumentView(
+        docType: 'Purchase Invoice',
+        docNo: inv.invoiceNo ?? '#\${inv.id}',
+        status: inv.status,
+        isLocked: inv.status != 'Draft', // posted bills are read-only
+        customer: _supplierName(inv.supplierId),
+        partyLabel: 'SUPPLIER',
+        billingLabel: '',
+        shippingLabel: '',
+        fields: {
+          'Invoice date': inv.invoiceDate ?? '--',
+          if ((inv.dueDate ?? '').isNotEmpty) 'Due date': inv.dueDate!,
+          if (inv.purchaseOrderId != null) 'From purchase order': '#\${inv.purchaseOrderId}',
+          'Paid': '₹\${inv.amountPaid.toStringAsFixed(2)}',
+          'Outstanding': '₹\${inv.outstanding.toStringAsFixed(2)}',
+        },
+        hasPricing: true,
+        lines: inv.items.map((e) {
+          final tax = _taxOf(e.taxId);
+          return DocLineView(
+            product: _productName(e.productId),
+            quantity: e.quantity,
+            unitPrice: e.unitPrice,
+            discountPercent: e.discountPercent,
+            taxLabel: tax?.name,
+            taxPercent: tax?.ratePercent ?? 0,
+            lineTotal: e.lineSubtotal,
+          );
+        }).toList(),
+        charges: inv.charges
+            .map((c) => DocChargeView(
+                  label: c.label, amount: c.amount, taxPercent: c.taxPercent))
+            .toList(),
+        subtotal: inv.subtotal,
+        chargesTotal: inv.chargesTotal,
+        taxAmount: inv.taxAmount,
+        totalAmount: inv.totalAmount,
+        notes: inv.notes,
+      );
 
   String _supplierName(int id) {
     final matches = _suppliers.where((s) => s.id == id);
@@ -150,6 +207,16 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
             children: [
               Text('Purchase Invoices', style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
+              // Reading the supplier's own PDF beats retyping it.
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final created = await InvoiceImportScreen.open(context);
+                  if (created == true) _load();
+                },
+                icon: const Icon(Icons.upload_file_outlined, size: 18),
+                label: const Text('Import from PDF'),
+              ),
+              const SizedBox(width: 12),
               FilledButton.icon(
                 onPressed: _create,
                 icon: const Icon(Icons.add),
@@ -189,6 +256,11 @@ class _PurchaseInvoiceScreenState extends State<PurchaseInvoiceScreen> {
                                     icon: const Icon(Icons.check_circle_outline, size: 18),
                                     label: const Text('Post'),
                                   ),
+                                IconButton(
+                                  icon: const Icon(Icons.visibility_outlined),
+                                  tooltip: 'View details / PDF',
+                                  onPressed: () => DocDetailPage.open(context, _viewOf(inv)),
+                                ),
                                 if (inv.status == 'Draft') ...[
                                   IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(inv), tooltip: 'Edit'),
                                   IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(inv), tooltip: 'Delete'),

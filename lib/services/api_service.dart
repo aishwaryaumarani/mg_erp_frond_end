@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import 'auth_service.dart';
@@ -9,7 +11,17 @@ import 'auth_service.dart';
 class ApiException implements Exception {
   final int statusCode;
   final String message;
-  ApiException(this.statusCode, this.message);
+
+  /// The parsed `detail` from the response, when the server sent a
+  /// structured error. GST failures use {error, message, retryable}, and
+  /// the UI branches on that code -- "already generated" is handled very
+  /// differently from "the portal is down".
+  final dynamic detail;
+
+  ApiException(this.statusCode, this.message, {this.detail});
+
+  /// The machine-readable code, when there is one.
+  String? get code => detail is Map ? '${(detail as Map)['error']}' : null;
 
   @override
   String toString() => message;
@@ -52,10 +64,16 @@ class ApiService {
       return jsonDecode(res.body);
     }
     String message = 'Request failed (${res.statusCode})';
+    dynamic detail;
     try {
       final body = jsonDecode(res.body);
       if (body is Map && body['detail'] != null) {
-        message = body['detail'].toString();
+        detail = body['detail'];
+        // A structured error carries its own human-readable message;
+        // anything else is stringified as before.
+        message = detail is Map && detail['message'] != null
+            ? '${detail['message']}'
+            : detail.toString();
       }
     } catch (_) {
       // response wasn't JSON -- fall back to the generic message
@@ -65,7 +83,7 @@ class ApiService {
       // of leaving every screen stuck on a dead error.
       AuthService.instance.logout();
     }
-    throw ApiException(res.statusCode, message);
+    throw ApiException(res.statusCode, message, detail: detail);
   }
 
   Future<List<dynamic>> list(String path, {Map<String, dynamic>? query}) async {
@@ -79,6 +97,32 @@ class ApiService {
   /// range -- can use this too.
   Future<Map<String, dynamic>> getOne(String path, {Map<String, dynamic>? query}) async {
     final res = await http.get(_uri(path, query), headers: _headers());
+    return _decode(res) as Map<String, dynamic>;
+  }
+
+  /// Raw bytes rather than JSON -- used for the company logo, which the
+  /// server returns as an image.
+  Future<Uint8List> getBytes(String path) async {
+    final res = await http.get(_uri(path), headers: _headers());
+    if (res.statusCode >= 400) {
+      throw ApiException(res.statusCode, 'Could not load $path');
+    }
+    return res.bodyBytes;
+  }
+
+  /// Multipart upload -- used to send a supplier's invoice PDF to
+  /// /api/purchase-invoices/import/preview. Bytes rather than a file path,
+  /// because on web there is no path to give.
+  Future<Map<String, dynamic>> uploadFile(
+    String path,
+    List<int> bytes,
+    String filename,
+  ) async {
+    final request = http.MultipartRequest('POST', _uri(path))
+      ..headers.addAll(_headers()..remove('Content-Type'))
+      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+    final streamed = await request.send();
+    final res = await http.Response.fromStream(streamed);
     return _decode(res) as Map<String, dynamic>;
   }
 

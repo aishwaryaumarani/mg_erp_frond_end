@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
+import '../models/gst_models.dart';
+import '../services/document_pdf.dart';
+import '../widgets/doc_detail_page.dart';
 import '../widgets/doc_items_editor.dart';
+import '../widgets/pdf_preview_page.dart';
+import '../widgets/gst_panel.dart';
 import '../widgets/quick_add.dart';
 import '../widgets/status_badge.dart';
 
@@ -68,6 +73,108 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
   String _customerName(int id) {
     final matches = _customers.where((c) => c.id == id);
     return matches.isEmpty ? 'Customer #$id' : matches.first.name;
+  }
+
+  Tax? _taxOf(int? id) {
+    if (id == null) return null;
+    final matches = _taxes.where((t) => t.id == id);
+    return matches.isEmpty ? null : matches.first;
+  }
+
+  String _productName(int? id) {
+    final matches = _products.where((p) => p.id == id);
+    return matches.isEmpty ? 'Product #$id' : '${matches.first.name} [${matches.first.productCode}]';
+  }
+
+  Customer? _customerOf(int id) {
+    final matches = _customers.where((c) => c.id == id);
+    return matches.isEmpty ? null : matches.first;
+  }
+
+  /// The read-only shape shared by the detail screen and the PDF.
+  DocumentView _viewOf(SalesInvoice inv, {DocGstView? gst}) {
+    final customer = _customerOf(inv.customerId);
+    return DocumentView(
+      docType: 'Tax Invoice',
+      docNo: inv.invoiceNo ?? '#${inv.id}',
+      status: inv.status,
+      // Only a Draft is editable; anything posted onward is frozen, and a
+      // filed e-invoice can never be edited at all.
+      isLocked: inv.status != 'Draft',
+      customer: _customerName(inv.customerId),
+      fields: {
+        'Invoice date': inv.invoiceDate ?? '--',
+        if (inv.dueDate != null && inv.dueDate!.isNotEmpty) 'Due date': inv.dueDate!,
+        if ((customer?.gstin ?? '').isNotEmpty) 'Customer GSTIN': customer!.gstin!,
+        if ((customer?.placeOfSupply ?? '').isNotEmpty)
+          'Place of supply': customer!.placeOfSupply!,
+        if (inv.salesOrderId != null) 'From sales order': '#${inv.salesOrderId}',
+      },
+      billingAddress: customer?.billingAddress,
+      shippingAddress: customer?.shippingAddress,
+      hasPricing: true,
+      lines: inv.items.map((e) {
+        final tax = _taxOf(e.taxId);
+        return DocLineView(
+          product: _productName(e.productId),
+          quantity: e.quantity,
+          unitPrice: e.unitPrice,
+          discountPercent: e.discountPercent,
+          taxLabel: tax?.name,
+          taxPercent: tax?.ratePercent ?? 0,
+          lineTotal: e.lineSubtotal,
+        );
+      }).toList(),
+      subtotal: inv.subtotal,
+      taxAmount: inv.taxAmount,
+      totalAmount: inv.totalAmount,
+      notes: inv.notes,
+      gst: gst,
+    );
+  }
+
+  /// Fetches the filing details before rendering, so the IRN, acknowledgement
+  /// and signed QR on the printed invoice are always what the portal holds
+  /// right now -- not a stale copy cached in the list.
+  Future<DocGstView?> _gstStampFor(SalesInvoice inv) async {
+    try {
+      final status = GstStatus.fromJson(await ApiService.instance
+          .getOne('/api/sales-invoices/${inv.id}/gst-status'));
+      if (!status.gstEnabled) return null;
+      final ei = status.eInvoice;
+      final ewb = status.eWayBill;
+      if (ei == null && ewb == null) return null;
+      return DocGstView(
+        irn: ei?.irn,
+        ackNumber: ei?.ackNumber,
+        ackDate: ei?.ackDate,
+        signedQrCode: ei?.signedQrCode,
+        eInvoiceCancelled: ei?.cancelled ?? false,
+        ewbNumber: ewb?.ewbNumber,
+        ewbDate: ewb?.ewbDate,
+        ewbValidUntil: ewb?.validUntil,
+        vehicleNumber: ewb?.vehicleNumber,
+        transportMode: ewb?.transportMode,
+        ewbCancelled: ewb?.cancelled ?? false,
+        sandbox: (ei?.environment ?? '').toLowerCase() != 'production',
+      );
+    } catch (_) {
+      // A document with no filing, or GST switched off entirely: print the
+      // plain invoice rather than failing the whole PDF.
+      return null;
+    }
+  }
+
+  Future<void> _openDetail(SalesInvoice inv) async {
+    final gst = await _gstStampFor(inv);
+    if (!mounted) return;
+    DocDetailPage.open(context, _viewOf(inv, gst: gst));
+  }
+
+  Future<void> _openPdf(SalesInvoice inv) async {
+    final gst = await _gstStampFor(inv);
+    if (!mounted) return;
+    PdfPreviewPage.open(context, _viewOf(inv, gst: gst));
   }
 
   Future<void> _create() async {
@@ -188,6 +295,25 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
                                     icon: const Icon(Icons.check_circle_outline, size: 18),
                                     label: const Text('Post'),
                                   ),
+                                // E-invoice and e-way bill live behind this
+                                // button: explicit actions, never automatic.
+                                IconButton(
+                                  icon: const Icon(Icons.visibility_outlined),
+                                  tooltip: 'View',
+                                  onPressed: () => _openDetail(inv),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.picture_as_pdf_outlined),
+                                  tooltip: 'PDF',
+                                  onPressed: () => _openPdf(inv),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.qr_code_2_outlined),
+                                  tooltip: 'GST: e-invoice & e-way bill',
+                                  onPressed: () => GstPanel.open(
+                                    context, inv.id!, inv.invoiceNo ?? '#${inv.id}',
+                                  ).then((_) => _load()),
+                                ),
                                 if (inv.status == 'Draft') ...[
                                   IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(inv), tooltip: 'Edit'),
                                   IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(inv), tooltip: 'Delete'),

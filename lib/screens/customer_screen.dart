@@ -46,6 +46,8 @@ class CustomerScreen extends StatelessWidget {
     final openingBalance = TextEditingController(text: existing?.openingBalance.toString() ?? '0');
     String status = existing?.status ?? 'Active';
     String? grade = existing?.grade;
+    final stateCode = TextEditingController(text: existing?.stateCode ?? '');
+    final placeOfSupply = TextEditingController(text: existing?.placeOfSupply ?? '');
     // Most customers take delivery where they are billed. Ticked by
     // default for a new customer, and for an existing one only when the
     // two addresses already match -- ticking it on save would otherwise
@@ -111,9 +113,50 @@ class CustomerScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 Row(children: [
-                  Expanded(child: TextField(controller: gstin, decoration: const InputDecoration(labelText: 'GSTIN'))),
+                  Expanded(
+                    child: TextField(
+                      controller: gstin,
+                      textCapitalization: TextCapitalization.characters,
+                      decoration: const InputDecoration(
+                        labelText: 'GSTIN',
+                        hintText: '27XXXXXXXXXXXZX',
+                        helperText: 'Required to raise an e-invoice for this customer',
+                      ),
+                      // The state code is the GSTIN's first two digits, so
+                      // filling one fills the other.
+                      onChanged: (v) {
+                        final code = v.trim().length >= 2 ? v.trim().substring(0, 2) : '';
+                        if (code.length == 2 && int.tryParse(code) != null) {
+                          if (stateCode.text.isEmpty) stateCode.text = code;
+                          if (placeOfSupply.text.isEmpty) placeOfSupply.text = code;
+                        }
+                      },
+                    ),
+                  ),
                   const SizedBox(width: 12),
                   Expanded(child: TextField(controller: pan, decoration: const InputDecoration(labelText: 'PAN'))),
+                ]),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(
+                    child: TextField(
+                      controller: stateCode,
+                      decoration: const InputDecoration(
+                        labelText: 'State code',
+                        hintText: '27 for Maharashtra',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: placeOfSupply,
+                      decoration: const InputDecoration(
+                        labelText: 'Place of supply',
+                        helperText: 'Usually the same; decides CGST+SGST or IGST',
+                      ),
+                    ),
+                  ),
                 ]),
                 const SizedBox(height: 12),
                 Row(children: [
@@ -171,6 +214,9 @@ class CustomerScreen extends StatelessWidget {
                     paymentTerms: paymentTerms.text.trim().isEmpty ? null : paymentTerms.text.trim(),
                     openingBalance: double.tryParse(openingBalance.text.trim()) ?? 0,
                     grade: grade,
+                    stateCode: stateCode.text.trim().isEmpty ? null : stateCode.text.trim(),
+                    placeOfSupply:
+                        placeOfSupply.text.trim().isEmpty ? null : placeOfSupply.text.trim(),
                     status: status,
                   ),
                 );

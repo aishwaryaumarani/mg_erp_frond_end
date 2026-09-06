@@ -270,6 +270,13 @@ class Customer {
   String? shippingAddress;
   String? gstin;
   String? pan;
+
+  /// GST needs to know which state the customer is in and where the
+  /// supply is treated as made -- that is what decides CGST+SGST versus
+  /// IGST (backend/app/gst/tax_engine.py).
+  String? state;
+  String? stateCode;
+  String? placeOfSupply;
   double creditLimit;
   String? paymentTerms;
   double openingBalance;
@@ -287,6 +294,9 @@ class Customer {
     this.shippingAddress,
     this.gstin,
     this.pan,
+    this.state,
+    this.stateCode,
+    this.placeOfSupply,
     this.creditLimit = 0,
     this.paymentTerms,
     this.openingBalance = 0,
@@ -305,6 +315,9 @@ class Customer {
         shippingAddress: j['shipping_address'],
         gstin: j['gstin'],
         pan: j['pan'],
+        state: j['state'],
+        stateCode: j['state_code'],
+        placeOfSupply: j['place_of_supply'],
         creditLimit: (j['credit_limit'] ?? 0).toDouble(),
         paymentTerms: j['payment_terms'],
         openingBalance: (j['opening_balance'] ?? 0).toDouble(),
@@ -322,6 +335,9 @@ class Customer {
         'shipping_address': shippingAddress,
         'gstin': gstin,
         'pan': pan,
+        'state': state,
+        'state_code': stateCode,
+        'place_of_supply': placeOfSupply,
         'credit_limit': creditLimit,
         'payment_terms': paymentTerms,
         'opening_balance': openingBalance,
@@ -937,6 +953,18 @@ class PurchaseOrder {
   int supplierId;
   String? orderDate;
   String status; // Draft | Sent | Confirmed | Cancelled
+
+  /// What a printed purchase order carries beyond the lines: who it ships
+  /// to, how it travels, and the agreed terms.
+  String? referenceNo;
+  String? otherReferences;
+  String? paymentTerms;
+  String? dispatchedThrough;
+  String? destination;
+  String? termsOfDelivery;
+  String? dueDate;
+  String? consigneeName;
+  String? consigneeAddress;
   String? notes;
   double subtotal;
   double discountAmount;
@@ -951,6 +979,15 @@ class PurchaseOrder {
     required this.supplierId,
     this.orderDate,
     this.status = 'Draft',
+    this.referenceNo,
+    this.otherReferences,
+    this.paymentTerms,
+    this.dispatchedThrough,
+    this.destination,
+    this.termsOfDelivery,
+    this.dueDate,
+    this.consigneeName,
+    this.consigneeAddress,
     this.notes,
     this.subtotal = 0,
     this.discountAmount = 0,
@@ -966,6 +1003,15 @@ class PurchaseOrder {
         supplierId: j['supplier_id'],
         orderDate: j['order_date'],
         status: j['status'] ?? 'Draft',
+        referenceNo: j['reference_no'],
+        otherReferences: j['other_references'],
+        paymentTerms: j['payment_terms'],
+        dispatchedThrough: j['dispatched_through'],
+        destination: j['destination'],
+        termsOfDelivery: j['terms_of_delivery'],
+        dueDate: j['due_date'],
+        consigneeName: j['consignee_name'],
+        consigneeAddress: j['consignee_address'],
         notes: j['notes'],
         subtotal: (j['subtotal'] ?? 0).toDouble(),
         discountAmount: (j['discount_amount'] ?? 0).toDouble(),
@@ -982,6 +1028,15 @@ class PurchaseOrder {
         'supplier_id': supplierId,
         'order_date': orderDate,
         'status': status,
+        'reference_no': referenceNo,
+        'other_references': otherReferences,
+        'payment_terms': paymentTerms,
+        'dispatched_through': dispatchedThrough,
+        'destination': destination,
+        'terms_of_delivery': termsOfDelivery,
+        'due_date': dueDate,
+        'consignee_name': consigneeName,
+        'consignee_address': consigneeAddress,
         'notes': notes,
         'items': items.map((e) => e.toJson()).toList(),
       };
@@ -1079,6 +1134,11 @@ class PurchaseInvoice {
   String? dueDate;
   String status; // Draft | Posted | PartiallyPaid | Paid | Cancelled
   String? notes;
+
+  /// Freight/labour the supplier billed as lines. Money only: no product,
+  /// no stock (backend/app/routers/invoice_import.py).
+  double chargesTotal;
+  List<OrderCharge> charges;
   double subtotal;
   double discountAmount;
   double taxAmount;
@@ -1100,8 +1160,11 @@ class PurchaseInvoice {
     this.taxAmount = 0,
     this.totalAmount = 0,
     this.amountPaid = 0,
+    this.chargesTotal = 0,
+    List<OrderCharge>? charges,
     List<DocLineItem>? items,
-  }) : items = items ?? [];
+  })  : charges = charges ?? [],
+        items = items ?? [];
 
   double get outstanding => totalAmount - amountPaid;
 
@@ -1114,6 +1177,10 @@ class PurchaseInvoice {
         dueDate: j['due_date'],
         status: j['status'] ?? 'Draft',
         notes: j['notes'],
+        chargesTotal: (j['charges_total'] ?? 0).toDouble(),
+        charges: ((j['charges'] as List<dynamic>?) ?? [])
+            .map((e) => OrderCharge.fromJson(e as Map<String, dynamic>))
+            .toList(),
         subtotal: (j['subtotal'] ?? 0).toDouble(),
         discountAmount: (j['discount_amount'] ?? 0).toDouble(),
         taxAmount: (j['tax_amount'] ?? 0).toDouble(),

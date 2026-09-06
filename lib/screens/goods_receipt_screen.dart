@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
+import '../services/document_pdf.dart';
+import '../widgets/doc_detail_page.dart';
 import '../widgets/status_badge.dart';
 import '../widgets/quick_add.dart';
 
@@ -64,6 +66,41 @@ class _GoodsReceiptScreenState extends State<GoodsReceiptScreen> {
       });
     }
   }
+
+  String _productName(int? id) {
+    final matches = _products.where((p) => p.id == id);
+    return matches.isEmpty ? 'Product #\$id' : '\${matches.first.name} [\${matches.first.productCode}]';
+  }
+
+  String _warehouseName(int? id) {
+    if (id == null) return '--';
+    final matches = _warehouses.where((w) => w.id == id);
+    return matches.isEmpty ? 'Warehouse #\$id' : matches.first.name;
+  }
+
+  /// Quantities only, with no pricing -- what was actually received is a
+  /// separate question from what it cost, which lives on the invoice.
+  /// A confirmed receipt has already moved stock, so it is read-only.
+  DocumentView _viewOf(GoodsReceipt r) => DocumentView(
+        docType: 'Goods Receipt',
+        docNo: r.grnNo ?? '#\${r.id}',
+        status: r.status,
+        isLocked: r.status == 'Confirmed',
+        customer: _supplierName(r.supplierId),
+        partyLabel: 'SUPPLIER',
+        billingLabel: '',
+        shippingLabel: '',
+        fields: {
+          'Receipt date': r.receiptDate ?? '--',
+          'Warehouse': _warehouseName(r.warehouseId),
+          if (r.purchaseOrderId != null) 'From purchase order': '#\${r.purchaseOrderId}',
+        },
+        hasPricing: false,
+        lines: r.items
+            .map((e) => DocLineView(product: _productName(e.productId), quantity: e.quantity))
+            .toList(),
+        notes: r.notes,
+      );
 
   String _supplierName(int id) {
     final matches = _suppliers.where((s) => s.id == id);
@@ -187,6 +224,11 @@ class _GoodsReceiptScreenState extends State<GoodsReceiptScreen> {
                                     icon: const Icon(Icons.inventory_outlined, size: 18),
                                     label: const Text('Confirm'),
                                   ),
+                                IconButton(
+                                  icon: const Icon(Icons.visibility_outlined),
+                                  tooltip: 'View details / PDF',
+                                  onPressed: () => DocDetailPage.open(context, _viewOf(r)),
+                                ),
                                 if (r.status != 'Confirmed') ...[
                                   IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(r), tooltip: 'Edit'),
                                   IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(r), tooltip: 'Delete'),

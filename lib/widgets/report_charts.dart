@@ -53,18 +53,24 @@ String _short(double v) {
 List<ChartSlice> summarise(
   List<Map<String, dynamic>> rows,
   String labelKey,
-  String valueKey,
-) {
+  String valueKey, {
+  /// Rank by magnitude, keeping negatives in. Off by default: for sales
+  /// or outstanding, a non-positive row has nothing to show.
+  bool absolute = false,
+}) {
   final totals = <String, double>{};
   for (final row in rows) {
     final label = '${row[labelKey] ?? '--'}';
     final raw = row[valueKey];
     final value = raw is num ? raw.toDouble() : double.tryParse('$raw') ?? 0;
-    if (value <= 0) continue;
+    if (!absolute && value <= 0) continue;
     totals[label] = (totals[label] ?? 0) + value;
   }
-  final slices = totals.entries.map((e) => ChartSlice(e.key, e.value)).toList()
-    ..sort((a, b) => b.value.compareTo(a.value));
+  final slices = totals.entries
+      .where((e) => absolute ? e.value != 0 : e.value > 0)
+      .map((e) => ChartSlice(e.key, e.value))
+      .toList()
+    ..sort((a, b) => b.value.abs().compareTo(a.value.abs()));
   return slices;
 }
 
@@ -88,9 +94,16 @@ class ReportCharts extends StatelessWidget {
 
   /// The pie's share, defaulting to the same measure as the bars. When
   /// [statusKey] is set the pie counts rows per state instead, in status
-  /// colours.
+  /// colours; when [groupKey] is set it sums the measure per group
+  /// (Income vs Expenses, Assets vs Liabilities vs Equity).
   final String pieTitle;
   final String? statusKey;
+  final String? groupKey;
+
+  /// Rank the bars by magnitude and label them with the signed figure.
+  /// A Balance Sheet has negative balances that still matter -- an
+  /// overdrawn bank is the biggest number on the page.
+  final bool absolute;
 
   /// Money is formatted as currency; counts are not.
   final bool money;
@@ -103,20 +116,30 @@ class ReportCharts extends StatelessWidget {
     required this.barTitle,
     required this.pieTitle,
     this.statusKey,
+    this.groupKey,
+    this.absolute = false,
     this.money = true,
   });
 
-  List<ChartSlice> get _bars => summarise(rows, labelKey, valueKey).take(6).toList();
+  List<ChartSlice> get _bars =>
+      summarise(rows, labelKey, valueKey, absolute: absolute).take(6).toList();
 
   List<ChartSlice> get _pie {
-    if (statusKey == null) return foldTail(summarise(rows, labelKey, valueKey));
-    final counts = <String, double>{};
-    for (final row in rows) {
-      final key = '${row[statusKey] ?? '--'}';
-      counts[key] = (counts[key] ?? 0) + 1;
+    if (statusKey != null) {
+      final counts = <String, double>{};
+      for (final row in rows) {
+        final key = '${row[statusKey] ?? '--'}';
+        counts[key] = (counts[key] ?? 0) + 1;
+      }
+      return counts.entries.map((e) => ChartSlice(e.key, e.value)).toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
     }
-    return counts.entries.map((e) => ChartSlice(e.key, e.value)).toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+    if (groupKey != null) {
+      // Sum the measure per group -- "income vs expenses" is about the
+      // amounts, not how many accounts each side happens to have.
+      return summarise(rows, groupKey!, valueKey, absolute: true);
+    }
+    return foldTail(summarise(rows, labelKey, valueKey));
   }
 
   Color _sliceColor(int i, String label) {
@@ -193,7 +216,7 @@ class _BarList extends StatelessWidget {
     if (slices.isEmpty) {
       return const Text('Nothing to chart yet.', style: TextStyle(color: AppColors.muted));
     }
-    final max = slices.first.value;
+    final max = slices.first.value.abs();
     return Column(
       children: [
         for (final s in slices)
@@ -220,7 +243,7 @@ class _BarList extends StatelessWidget {
                       alignment: Alignment.centerLeft,
                       child: FractionallySizedBox(
                         alignment: Alignment.centerLeft,
-                        widthFactor: max <= 0 ? 0.0 : (s.value / max).clamp(0.02, 1.0),
+                        widthFactor: max <= 0 ? 0.0 : (s.value.abs() / max).clamp(0.02, 1.0),
                         child: Container(
                           height: 12,
                           decoration: const BoxDecoration(
@@ -269,7 +292,9 @@ class _PieState extends State<_Pie> {
     if (slices.isEmpty) {
       return const Text('Nothing to chart yet.', style: TextStyle(color: AppColors.muted));
     }
-    final total = slices.fold<double>(0, (sum, s) => sum + s.value);
+    // Shares are computed on magnitude -- a negative slice cannot be drawn,
+    // and the legend still shows its real signed figure.
+    final total = slices.fold<double>(0, (sum, s) => sum + s.value.abs());
 
     return Column(
       children: [
@@ -287,14 +312,14 @@ class _PieState extends State<_Pie> {
               sections: [
                 for (var i = 0; i < slices.length; i++)
                   PieChartSectionData(
-                    value: slices[i].value,
+                    value: slices[i].value.abs(),
                     color: widget.colorOf(i, slices[i].label),
                     radius: _touched == i ? 62 : 56,
                     // Share on the slice; the name sits in the legend, so
                     // no slice depends on colour alone to be identified.
                     title: total == 0
                         ? ''
-                        : '${(slices[i].value / total * 100).toStringAsFixed(0)}%',
+                        : '${(slices[i].value.abs() / total * 100).toStringAsFixed(0)}%',
                     titleStyle: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w800,

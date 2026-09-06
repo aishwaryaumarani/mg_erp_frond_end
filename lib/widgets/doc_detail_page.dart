@@ -64,13 +64,16 @@ class DocDetailPage extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
             children: [
               _Section(title: 'Customer & details', children: [
-                _field('Customer', doc.customer),
+                _field(doc.partyLabel, doc.customer),
                 for (final e in doc.fields.entries) _field(e.key, e.value),
               ]),
-              _Section(title: 'Addresses', children: [
-                _field('Billing address', doc.billingAddress),
-                _field('Shipping address', doc.shippingAddress),
-              ]),
+              // A purchase invoice carries no ship-to, so the whole card
+              // goes rather than showing a row of dashes.
+              if (doc.billingLabel.isNotEmpty || doc.shippingLabel.isNotEmpty)
+                _Section(title: 'Addresses', children: [
+                  if (doc.billingLabel.isNotEmpty) _field(doc.billingLabel, doc.billingAddress),
+                  if (doc.shippingLabel.isNotEmpty) _field(doc.shippingLabel, doc.shippingAddress),
+                ]),
               _Section(
                 title: 'Items',
                 children: [
@@ -140,7 +143,7 @@ class DocDetailPage extends StatelessWidget {
                     Align(
                       alignment: Alignment.centerRight,
                       child: SizedBox(
-                        width: 260,
+                        width: 320,
                         child: Column(children: [
                           _total('Subtotal', doc.subtotal),
                           if (doc.chargesTotal != 0) _total('Extra charges', doc.chargesTotal),
@@ -219,10 +222,14 @@ class DocDetailPage extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label,
-                style: TextStyle(
-                    color: bold ? AppColors.ink : AppColors.muted,
-                    fontWeight: bold ? FontWeight.w800 : FontWeight.w600)),
+            Flexible(
+              child: Text(label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: bold ? AppColors.ink : AppColors.muted,
+                      fontWeight: bold ? FontWeight.w800 : FontWeight.w600)),
+            ),
+            const SizedBox(width: 12),
             Text('₹${value.toStringAsFixed(2)}',
                 style: TextStyle(
                     color: AppColors.ink, fontWeight: bold ? FontWeight.w800 : FontWeight.w600)),

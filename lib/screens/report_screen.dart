@@ -39,6 +39,12 @@ class ReportScreen extends StatefulWidget {
   final String? chartLabelKey;
   final String? chartValueKey;
   final String? chartStatusKey;
+
+  /// Sums the measure per group for the pie (Income vs Expenses).
+  final String? chartGroupKey;
+
+  /// Rank bars by magnitude, keeping negative balances visible.
+  final bool chartAbsolute;
   final String barTitle;
   final String pieTitle;
 
@@ -57,6 +63,8 @@ class ReportScreen extends StatefulWidget {
     this.chartLabelKey,
     this.chartValueKey,
     this.chartStatusKey,
+    this.chartGroupKey,
+    this.chartAbsolute = false,
     this.barTitle = 'Top by value',
     this.pieTitle = 'Share',
     this.highlightPositiveKey,
@@ -180,6 +188,8 @@ class _ReportScreenState extends State<ReportScreen> {
               labelKey: widget.chartLabelKey!,
               valueKey: widget.chartValueKey!,
               statusKey: widget.chartStatusKey,
+              groupKey: widget.chartGroupKey,
+              absolute: widget.chartAbsolute,
               barTitle: widget.barTitle,
               pieTitle: widget.pieTitle,
             ),

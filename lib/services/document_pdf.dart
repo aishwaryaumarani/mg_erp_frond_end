@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../services/api_service.dart';
 import '../widgets/brand_logo.dart';
 
 /// One line of a printed document. Inquiries carry no pricing, so the
@@ -51,12 +52,69 @@ class DocChargeView {
 /// Everything needed to render a sales document, on screen (read-only
 /// view) or on paper (PDF). Built by the list screens, which already hold
 /// the customer/product/tax lists needed to turn ids into names.
+/// GST filing details as they must appear on a tax invoice.
+///
+/// Rule 46 of the CGST Rules requires the IRN, acknowledgement number and
+/// date, and the signed QR code returned by the IRP to be printed on the
+/// invoice; the e-way bill number and validity go on the copy that travels
+/// with the goods. Nothing here is computed locally -- every value is what
+/// the portal (or, in sandbox, the mock) sent back.
+class DocGstView {
+  final String? irn;
+  final String? ackNumber;
+  final String? ackDate;
+
+  /// The signed payload from the IRP, printed as a QR code exactly as
+  /// received. Officers scan this, so it is never re-encoded or trimmed.
+  final String? signedQrCode;
+  final bool eInvoiceCancelled;
+
+  final String? ewbNumber;
+  final String? ewbDate;
+  final String? ewbValidUntil;
+  final String? vehicleNumber;
+  final String? transportMode;
+  final bool ewbCancelled;
+
+  /// True on sandbox/mock filings. Printed as a warning so a test document
+  /// can never be mistaken for one filed with the government.
+  final bool sandbox;
+
+  const DocGstView({
+    this.irn,
+    this.ackNumber,
+    this.ackDate,
+    this.signedQrCode,
+    this.eInvoiceCancelled = false,
+    this.ewbNumber,
+    this.ewbDate,
+    this.ewbValidUntil,
+    this.vehicleNumber,
+    this.transportMode,
+    this.ewbCancelled = false,
+    this.sandbox = false,
+  });
+
+  bool get hasEInvoice => (irn ?? '').isNotEmpty;
+  bool get hasEWayBill => (ewbNumber ?? '').isNotEmpty;
+  bool get isEmpty => !hasEInvoice && !hasEWayBill;
+}
+
 class DocumentView {
   final String docType; // 'Sales Inquiry' | 'Quotation' | 'Sales Order'
   final String docNo;
   final String status;
   final bool isLocked;
   final String customer;
+
+  /// Who the other party is on this document. A purchase order is issued
+  /// *to* a supplier, so "CUSTOMER" would be wrong on it.
+  final String partyLabel;
+  final String billingLabel;
+
+  /// Empty hides the ship-to block entirely (a purchase order has one
+  /// address, not two).
+  final String shippingLabel;
   final Map<String, String> fields; // date, valid until, source document...
   final String? billingAddress;
   final String? shippingAddress;
@@ -69,12 +127,19 @@ class DocumentView {
   final double totalAmount;
   final String? notes;
 
+  /// Null on documents that are not tax invoices, and on an invoice that
+  /// has not been filed -- the band is simply not drawn.
+  final DocGstView? gst;
+
   const DocumentView({
     required this.docType,
     required this.docNo,
     required this.status,
     required this.isLocked,
     required this.customer,
+    this.partyLabel = 'CUSTOMER',
+    this.billingLabel = 'BILL TO',
+    this.shippingLabel = 'SHIP TO',
     required this.fields,
     this.billingAddress,
     this.shippingAddress,
@@ -86,6 +151,7 @@ class DocumentView {
     this.taxAmount = 0,
     this.totalAmount = 0,
     this.notes,
+    this.gst,
   });
 }
 
@@ -100,11 +166,27 @@ Future<Uint8List> buildDocumentPdf(DocumentView doc) async {
   // Null if the asset can't be read -- the document still prints.
   final logoBytes = await loadLogoBytes();
   final logo = logoBytes == null ? null : pw.MemoryImage(logoBytes);
+  // Letterhead from Settings -- name, GSTIN and address as saved, rather
+  // than a constant that could only be changed in code.
+  final company = await _companyProfile();
+  final companyName = '${company['legal_name'] ?? company['name'] ?? kCompanyName}';
+  final companyLines = [
+    for (final key in ['address', 'city', 'state', 'pincode'])
+      if ('${company[key] ?? ''}'.trim().isNotEmpty) '${company[key]}',
+  ].join(', ');
+  final companyTax = [
+    if ('${company['gstin'] ?? ''}'.trim().isNotEmpty) 'GSTIN ${company['gstin']}',
+    if ('${company['phone'] ?? ''}'.trim().isNotEmpty) '${company['phone']}',
+    if ('${company['email'] ?? ''}'.trim().isNotEmpty) '${company['email']}',
+  ].join('  ·  ');
   const accent = PdfColor.fromInt(0xFF1D4ED8);
   const muted = PdfColor.fromInt(0xFF64748B);
 
   pw.Widget label(String text) =>
       pw.Text(text, style: const pw.TextStyle(fontSize: 8, color: muted));
+
+  // Local copy so the null checks below promote it inside the page builder.
+  final gst = doc.gst;
 
   pdf.addPage(
     pw.MultiPage(
@@ -120,7 +202,7 @@ Future<Uint8List> buildDocumentPdf(DocumentView doc) async {
       footer: (context) => pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text(kCompanyName, style: const pw.TextStyle(fontSize: 8, color: muted)),
+          pw.Text(companyName, style: const pw.TextStyle(fontSize: 8, color: muted)),
           pw.Text('Page ${context.pageNumber} of ${context.pagesCount}',
               style: const pw.TextStyle(fontSize: 8, color: muted)),
         ],
@@ -137,9 +219,13 @@ Future<Uint8List> buildDocumentPdf(DocumentView doc) async {
                 pw.SizedBox(width: 12),
               ],
               pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                pw.Text(kCompanyName,
+                pw.Text(companyName,
                     style: const pw.TextStyle(
                         fontSize: 15, fontWeight: pw.FontWeight.bold, color: accent)),
+                if (companyLines.isNotEmpty)
+                  pw.Text(companyLines, style: const pw.TextStyle(fontSize: 8, color: muted)),
+                if (companyTax.isNotEmpty)
+                  pw.Text(companyTax, style: const pw.TextStyle(fontSize: 8, color: muted)),
                 pw.SizedBox(height: 2),
                 pw.Text(doc.docType, style: const pw.TextStyle(fontSize: 12, color: muted)),
               ]),
@@ -164,12 +250,125 @@ Future<Uint8List> buildDocumentPdf(DocumentView doc) async {
         pw.Divider(color: accent, thickness: 1),
         pw.SizedBox(height: 12),
 
+        // ---- e-invoice / e-way bill band ---------------------------------
+        // Rule 46: IRN, acknowledgement and the signed QR go on the face of
+        // the invoice. Drawn only when the document has actually been filed.
+        if (gst != null && !gst.isEmpty) ...[
+          pw.Container(
+            padding: const pw.EdgeInsets.all(10),
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: muted, width: 0.5),
+              borderRadius: pw.BorderRadius.circular(4),
+            ),
+            child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+              pw.Expanded(
+                child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                  if (gst.hasEInvoice) ...[
+                    pw.Text(
+                      gst.eInvoiceCancelled ? 'E-INVOICE (CANCELLED)' : 'E-INVOICE',
+                      style: pw.TextStyle(
+                          fontSize: 8,
+                          fontWeight: pw.FontWeight.bold,
+                          color: gst.eInvoiceCancelled
+                              ? const PdfColor.fromInt(0xFFB91C1C)
+                              : muted),
+                    ),
+                    pw.SizedBox(height: 2),
+                    label('IRN'),
+                    // 64 hex characters -- wrapped rather than clipped so the
+                    // printed value stays readable and complete.
+                    pw.Text(gst.irn!,
+                        style: const pw.TextStyle(fontSize: 8), softWrap: true),
+                    pw.SizedBox(height: 4),
+                    pw.Row(children: [
+                      pw.Expanded(
+                        child: pw.Column(
+                            crossAxisAlignment: pw.CrossAxisAlignment.start,
+                            children: [
+                              label('ACK NO.'),
+                              pw.Text(gst.ackNumber ?? '--',
+                                  style: const pw.TextStyle(fontSize: 9)),
+                            ]),
+                      ),
+                      pw.Expanded(
+                        child: pw.Column(
+                            crossAxisAlignment: pw.CrossAxisAlignment.start,
+                            children: [
+                              label('ACK DATE'),
+                              pw.Text(gst.ackDate ?? '--',
+                                  style: const pw.TextStyle(fontSize: 9)),
+                            ]),
+                      ),
+                    ]),
+                  ],
+                  if (gst.hasEInvoice && gst.hasEWayBill) pw.SizedBox(height: 8),
+                  if (gst.hasEWayBill) ...[
+                    pw.Text(
+                      gst.ewbCancelled ? 'E-WAY BILL (CANCELLED)' : 'E-WAY BILL',
+                      style: pw.TextStyle(
+                          fontSize: 8,
+                          fontWeight: pw.FontWeight.bold,
+                          color: gst.ewbCancelled
+                              ? const PdfColor.fromInt(0xFFB91C1C)
+                              : muted),
+                    ),
+                    pw.SizedBox(height: 2),
+                    pw.Row(children: [
+                      for (final pair in [
+                        ['EWB NO.', gst.ewbNumber],
+                        ['DATE', gst.ewbDate],
+                        ['VALID UNTIL', gst.ewbValidUntil],
+                        ['VEHICLE', gst.vehicleNumber],
+                      ])
+                        pw.Expanded(
+                          child: pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.start,
+                              children: [
+                                label(pair[0]!),
+                                pw.Text(
+                                    (pair[1] ?? '').isEmpty ? '--' : pair[1]!,
+                                    style: const pw.TextStyle(fontSize: 9)),
+                              ]),
+                        ),
+                    ]),
+                  ],
+                  if (gst.sandbox) ...[
+                    pw.SizedBox(height: 6),
+                    pw.Text(
+                      'SANDBOX / TEST FILING -- not registered with the GST portal.',
+                      style: const pw.TextStyle(
+                          fontSize: 8,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColor.fromInt(0xFFB45309)),
+                    ),
+                  ],
+                ]),
+              ),
+              if ((gst.signedQrCode ?? '').isNotEmpty) ...[
+                pw.SizedBox(width: 12),
+                pw.Column(children: [
+                  pw.BarcodeWidget(
+                    barcode: pw.Barcode.qrCode(),
+                    data: gst.signedQrCode!,
+                    width: 82,
+                    height: 82,
+                    drawText: false,
+                  ),
+                  pw.SizedBox(height: 2),
+                  pw.Text('Signed QR', style: const pw.TextStyle(fontSize: 7, color: muted)),
+                ]),
+              ],
+            ]),
+          ),
+          pw.SizedBox(height: 12),
+        ],
+
         // ---- customer + dates -------------------------------------------
         pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
           pw.Expanded(
             flex: 3,
             child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-              label('CUSTOMER'),
+              label(doc.partyLabel),
               pw.Text(doc.customer,
                   style: const pw.TextStyle(fontWeight: pw.FontWeight.bold)),
             ]),
@@ -193,22 +392,26 @@ Future<Uint8List> buildDocumentPdf(DocumentView doc) async {
         pw.SizedBox(height: 14),
 
         // ---- addresses ---------------------------------------------------
+        if (doc.billingLabel.isNotEmpty || doc.shippingLabel.isNotEmpty)
         pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+          if (doc.billingLabel.isNotEmpty)
           pw.Expanded(
             child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-              label('BILL TO'),
+              label(doc.billingLabel),
               pw.Text(doc.billingAddress?.trim().isNotEmpty == true ? doc.billingAddress! : '--',
                   style: const pw.TextStyle(fontSize: 10)),
             ]),
           ),
-          pw.SizedBox(width: 24),
-          pw.Expanded(
-            child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-              label('SHIP TO'),
-              pw.Text(doc.shippingAddress?.trim().isNotEmpty == true ? doc.shippingAddress! : '--',
-                  style: const pw.TextStyle(fontSize: 10)),
-            ]),
-          ),
+          if (doc.shippingLabel.isNotEmpty) ...[
+            pw.SizedBox(width: 24),
+            pw.Expanded(
+              child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                label(doc.shippingLabel),
+                pw.Text(doc.shippingAddress?.trim().isNotEmpty == true ? doc.shippingAddress! : '--',
+                    style: const pw.TextStyle(fontSize: 10)),
+              ]),
+            ),
+          ],
         ]),
         pw.SizedBox(height: 16),
 
@@ -337,3 +540,20 @@ pw.Widget _totalRow(String label, String value, {bool bold = false}) {
     ]),
   );
 }
+
+/// The company profile, fetched once per session -- the letterhead does
+/// not change between documents.
+Map<String, dynamic>? _companyCache;
+
+Future<Map<String, dynamic>> _companyProfile() async {
+  if (_companyCache != null) return _companyCache!;
+  try {
+    _companyCache = await ApiService.instance.getOne('/api/settings/company');
+  } catch (_) {
+    _companyCache = {}; // offline or not set up: fall back to the constant
+  }
+  return _companyCache!;
+}
+
+/// Called after Settings is saved so the next document picks up the change.
+void invalidateCompanyProfile() => _companyCache = null;

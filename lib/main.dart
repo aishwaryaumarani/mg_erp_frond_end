@@ -32,6 +32,7 @@ import 'screens/chart_of_accounts_screen.dart';
 import 'screens/general_ledger_screen.dart';
 import 'screens/journal_screen.dart';
 import 'screens/report_screen.dart';
+import 'screens/settings_screen.dart';
 import 'widgets/app_shell.dart';
 import 'theme/app_theme.dart';
 
@@ -405,13 +406,47 @@ class MiniErpApp extends StatelessWidget {
           NavLeaf(
               'Profit & Loss',
               Icons.trending_up,
-              (ctx) => const ComingSoonScreen(
-                  moduleName: 'Profit & Loss', phaseNote: 'Ships in Phase 7.')),
+              (ctx) => const ReportScreen(
+                    key: ValueKey('report-profit-loss'),
+                    title: 'Profit & Loss',
+                    path: '/api/reports/profit-loss',
+                    emptyMessage: 'Nothing earned or spent in this period.',
+                    chartLabelKey: 'account',
+                    chartValueKey: 'amount',
+                    chartGroupKey: 'section',
+                    chartAbsolute: true,
+                    barTitle: 'Biggest lines',
+                    pieTitle: 'Income vs expenses',
+                    columns: [
+                      ReportColumn('section', 'Section'),
+                      ReportColumn('code', 'Code'),
+                      ReportColumn('account', 'Account'),
+                      ReportColumn('amount', 'Amount', money: true),
+                    ],
+                  )),
           NavLeaf(
               'Balance Sheet',
               Icons.account_balance_wallet_outlined,
-              (ctx) => const ComingSoonScreen(
-                  moduleName: 'Balance Sheet', phaseNote: 'Ships in Phase 7.')),
+              (ctx) => const ReportScreen(
+                    key: ValueKey('report-balance-sheet'),
+                    title: 'Balance Sheet',
+                    path: '/api/reports/balance-sheet',
+                    // A balance sheet is a position as at a date, not a period.
+                    dateFiltered: false,
+                    emptyMessage: 'Nothing posted to the ledger yet.',
+                    chartLabelKey: 'account',
+                    chartValueKey: 'amount',
+                    chartGroupKey: 'section',
+                    chartAbsolute: true,
+                    barTitle: 'Largest balances',
+                    pieTitle: 'Assets · Liabilities · Equity',
+                    columns: [
+                      ReportColumn('section', 'Section'),
+                      ReportColumn('code', 'Code'),
+                      ReportColumn('account', 'Account'),
+                      ReportColumn('amount', 'Amount', money: true),
+                    ],
+                  )),
         ]),
 
       // Settings -- single-leaf group.
@@ -474,9 +509,5 @@ class MiniErpApp extends StatelessWidget {
   static Widget _stockLedger(BuildContext ctx) => const StockLedgerScreen();
   static Widget _stockAdjustment(BuildContext ctx) => const StockAdjustmentScreen();
   static Widget _tasks(BuildContext ctx) => const TaskScreen();
-  static Widget _settings(BuildContext ctx) => const ComingSoonScreen(
-        moduleName: 'Settings',
-        phaseNote:
-            'Company profile, users/roles, numbering sequences, and other config land here as later phases need them.',
-      );
+  static Widget _settings(BuildContext ctx) => const SettingsScreen();
 }
