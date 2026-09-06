@@ -28,6 +28,9 @@ import 'screens/stock_ledger_screen.dart';
 import 'screens/stock_adjustment_screen.dart';
 import 'screens/task_screen.dart';
 import 'screens/coming_soon_screen.dart';
+import 'screens/chart_of_accounts_screen.dart';
+import 'screens/general_ledger_screen.dart';
+import 'screens/journal_screen.dart';
 import 'screens/report_screen.dart';
 import 'widgets/app_shell.dart';
 import 'theme/app_theme.dart';
@@ -173,40 +176,85 @@ class MiniErpApp extends StatelessWidget {
       // Accounts -- Phase 6.
       if (can('accounts'))
         NavGroup('Accounts', Icons.account_balance_outlined, [
-          NavLeaf(
-              'Chart of Accounts',
-              Icons.list_outlined,
-              (ctx) => const ComingSoonScreen(
-                  moduleName: 'Chart of Accounts',
-                  phaseNote: 'Ships in Phase 6 with the default accounts from spec sec. 10.')),
-          NavLeaf(
-              'Journal',
-              Icons.book_outlined,
-              (ctx) => const ComingSoonScreen(
-                  moduleName: 'Journal Entries', phaseNote: 'Ships in Phase 6.')),
+          NavLeaf('Chart of Accounts', Icons.list_outlined,
+              (ctx) => const ChartOfAccountsScreen()),
+          NavLeaf('Journal', Icons.book_outlined, (ctx) => const JournalScreen()),
           NavLeaf(
               'General Ledger',
               Icons.menu_book_outlined,
-              (ctx) => const ComingSoonScreen(
-                  moduleName: 'General Ledger', phaseNote: 'Ships in Phase 6.')),
+              (ctx) => const GeneralLedgerScreen(key: ValueKey('gl-any'))),
+          // Receivables/Payables are the same numbers the reports show, so
+          // they open the same screen rather than a second implementation
+          // that could drift from it.
           NavLeaf(
               'Receivables',
               Icons.arrow_downward,
-              (ctx) => const ComingSoonScreen(
-                  moduleName: 'Accounts Receivable',
-                  phaseNote: 'Ships in Phase 6, driven by posted Sales Invoices.')),
+              (ctx) => const ReportScreen(
+                    key: ValueKey('accounts-receivables'),
+                    title: 'Accounts Receivable',
+                    path: '/api/reports/receivables',
+                    dateFiltered: false,
+                    emptyMessage: 'Nothing outstanding -- every invoice is settled.',
+                    chartLabelKey: 'party',
+                    chartValueKey: 'outstanding',
+                    barTitle: 'Who owes the most',
+                    pieTitle: 'Share of outstanding',
+                    columns: [
+                      ReportColumn('party_code', 'Code'),
+                      ReportColumn('party', 'Customer'),
+                      ReportColumn('invoices', 'Open invoices', numeric: true),
+                      ReportColumn('billed', 'Billed', money: true),
+                      ReportColumn('paid', 'Received', money: true),
+                      ReportColumn('outstanding', 'Outstanding', money: true),
+                      ReportColumn('oldest_invoice', 'Oldest'),
+                      ReportColumn('days_overdue', 'Days', numeric: true),
+                    ],
+                  )),
           NavLeaf(
               'Payables',
               Icons.arrow_upward,
-              (ctx) => const ComingSoonScreen(
-                  moduleName: 'Accounts Payable',
-                  phaseNote: 'Ships in Phase 6, driven by posted Purchase Invoices.')),
-          NavLeaf('Cash', Icons.payments_outlined,
-              (ctx) => const ComingSoonScreen(moduleName: 'Cash', phaseNote: 'Ships in Phase 6.')),
-          NavLeaf('Bank', Icons.account_balance_outlined,
-              (ctx) => const ComingSoonScreen(moduleName: 'Bank', phaseNote: 'Ships in Phase 6.')),
-          NavLeaf('Tax', Icons.percent_outlined,
-              (ctx) => const ComingSoonScreen(moduleName: 'Tax', phaseNote: 'Ships in Phase 6.')),
+              (ctx) => const ReportScreen(
+                    key: ValueKey('accounts-payables'),
+                    title: 'Accounts Payable',
+                    path: '/api/reports/payables',
+                    dateFiltered: false,
+                    emptyMessage: 'Nothing outstanding -- every supplier invoice is settled.',
+                    chartLabelKey: 'party',
+                    chartValueKey: 'outstanding',
+                    barTitle: 'Who we owe the most',
+                    pieTitle: 'Share of outstanding',
+                    columns: [
+                      ReportColumn('party_code', 'Code'),
+                      ReportColumn('party', 'Supplier'),
+                      ReportColumn('invoices', 'Open invoices', numeric: true),
+                      ReportColumn('billed', 'Billed', money: true),
+                      ReportColumn('paid', 'Paid', money: true),
+                      ReportColumn('outstanding', 'Outstanding', money: true),
+                      ReportColumn('oldest_invoice', 'Oldest'),
+                      ReportColumn('days_overdue', 'Days', numeric: true),
+                    ],
+                  )),
+          // The cash book, the bank book and the tax account are all the
+          // general ledger with one account preselected.
+          NavLeaf(
+              'Cash',
+              Icons.payments_outlined,
+              (ctx) => const GeneralLedgerScreen(
+                  key: ValueKey('gl-cash'), title: 'Cash Book', initialAccountCode: 'CASH')),
+          NavLeaf(
+              'Bank',
+              Icons.account_balance_outlined,
+              (ctx) => const GeneralLedgerScreen(
+                  key: ValueKey('gl-bank'), title: 'Bank Book', initialAccountCode: 'BANK')),
+          NavLeaf(
+              'Tax',
+              Icons.percent_outlined,
+              (ctx) => const GeneralLedgerScreen(
+                    key: ValueKey('gl-tax'),
+                    title: 'Tax Account',
+                    initialAccountCode: 'OUTPUT_TAX',
+                    onlyCodes: ['OUTPUT_TAX', 'INPUT_TAX'],
+                  )),
         ]),
 
       // Reports -- Phase 7.
@@ -218,8 +266,10 @@ class MiniErpApp extends StatelessWidget {
               (ctx) => const ReportScreen(
                     title: 'Sales Report',
                     path: '/api/reports/sales',
+                    key: ValueKey('report-sales'),
                     chartLabelKey: 'party',
                     chartValueKey: 'total',
+                    highlightPositiveKey: 'outstanding',
                     barTitle: 'Top customers by sales',
                     pieTitle: 'Share of sales',
                     emptyMessage: 'No invoices were issued in this period.',
@@ -241,8 +291,10 @@ class MiniErpApp extends StatelessWidget {
               (ctx) => const ReportScreen(
                     title: 'Purchase Report',
                     path: '/api/reports/purchase',
+                    key: ValueKey('report-purchase'),
                     chartLabelKey: 'party',
                     chartValueKey: 'total',
+                    highlightPositiveKey: 'outstanding',
                     barTitle: 'Top suppliers by purchases',
                     pieTitle: 'Share of purchases',
                     emptyMessage: 'No supplier invoices in this period.',
@@ -264,6 +316,7 @@ class MiniErpApp extends StatelessWidget {
               (ctx) => const ReportScreen(
                     title: 'Stock Report',
                     path: '/api/reports/stock',
+                    key: ValueKey('report-stock'),
                     chartLabelKey: 'product',
                     chartValueKey: 'value',
                     chartStatusKey: 'status',
@@ -288,6 +341,7 @@ class MiniErpApp extends StatelessWidget {
               (ctx) => const ReportScreen(
                     title: 'Receivable Report',
                     path: '/api/reports/receivables',
+                    key: ValueKey('report-receivables'),
                     chartLabelKey: 'party',
                     chartValueKey: 'outstanding',
                     barTitle: 'Who owes the most',
@@ -312,6 +366,7 @@ class MiniErpApp extends StatelessWidget {
               (ctx) => const ReportScreen(
                     title: 'Payable Report',
                     path: '/api/reports/payables',
+                    key: ValueKey('report-payables'),
                     chartLabelKey: 'party',
                     chartValueKey: 'outstanding',
                     barTitle: 'Who we owe the most',
@@ -332,8 +387,21 @@ class MiniErpApp extends StatelessWidget {
           NavLeaf(
               'Trial Balance',
               Icons.balance_outlined,
-              (ctx) => const ComingSoonScreen(
-                  moduleName: 'Trial Balance', phaseNote: 'Ships in Phase 7.')),
+              (ctx) => const ReportScreen(
+                    key: ValueKey('report-trial-balance'),
+                    title: 'Trial Balance',
+                    path: '/api/accounts/trial-balance',
+                    dateFiltered: false,
+                    emptyMessage: 'Nothing posted to the ledger yet.',
+                    columns: [
+                      ReportColumn('code', 'Code'),
+                      ReportColumn('account', 'Account'),
+                      ReportColumn('type', 'Type'),
+                      ReportColumn('debit', 'Debit', money: true),
+                      ReportColumn('credit', 'Credit', money: true),
+                      ReportColumn('balance', 'Balance', money: true),
+                    ],
+                  )),
           NavLeaf(
               'Profit & Loss',
               Icons.trending_up,

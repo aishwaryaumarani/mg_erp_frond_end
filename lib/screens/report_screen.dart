@@ -42,6 +42,11 @@ class ReportScreen extends StatefulWidget {
   final String barTitle;
   final String pieTitle;
 
+  /// Rows where this column is greater than zero are tinted, so invoices
+  /// still owing stand out from settled ones at a glance. The amount is
+  /// in the row too, so the tint is a second signal, never the only one.
+  final String? highlightPositiveKey;
+
   const ReportScreen({
     super.key,
     required this.title,
@@ -54,6 +59,7 @@ class ReportScreen extends StatefulWidget {
     this.chartStatusKey,
     this.barTitle = 'Top by value',
     this.pieTitle = 'Share',
+    this.highlightPositiveKey,
   });
 
   @override
@@ -70,10 +76,33 @@ class _ReportScreenState extends State<ReportScreen> {
   @override
   void initState() {
     super.initState();
+    _resetForReport();
+  }
+
+  @override
+  void didUpdateWidget(covariant ReportScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Switching reports in the sidebar swaps the widget but keeps this
+    // State -- same type, same slot in the tree -- so initState does not
+    // run again. Without this, the Payable report kept showing whichever
+    // report was opened first (its rows, its totals, under the new title).
+    if (oldWidget.path != widget.path) {
+      setState(_resetForReport);
+    }
+  }
+
+  /// Clears the previous report's data and loads this one.
+  void _resetForReport() {
+    _rows = [];
+    _summary = {};
+    _error = null;
+    _loading = true;
     if (widget.dateFiltered) {
       // Default to the current month -- the period people actually ask for.
       final now = DateTime.now();
       _range = DateTimeRange(start: DateTime(now.year, now.month, 1), end: now);
+    } else {
+      _range = null; // a snapshot report has no period
     }
     _load();
   }
@@ -267,16 +296,32 @@ class _ReportScreenState extends State<ReportScreen> {
             ],
             rows: [
               for (final row in _rows)
-                DataRow(cells: [
+                DataRow(
+                  color: _owing(row)
+                      // Warning tint: this row needs chasing. Kept light so
+                      // the ink text on top stays fully readable.
+                      ? WidgetStateProperty.all(AppColors.amber.withValues(alpha: 0.10))
+                      : null,
+                  cells: [
                   for (final col in widget.columns)
                     DataCell(
                       col.key == 'status'
                           ? StatusBadge(status: '${row[col.key] ?? ''}')
                           : Text(_cell(row, col)),
                     ),
-                ]),
+                  ],
+                ),
             ],
           ),
         ),
       );
+
+  /// True when the highlighted column carries a positive amount.
+  bool _owing(Map<String, dynamic> row) {
+    final key = widget.highlightPositiveKey;
+    if (key == null) return false;
+    final v = row[key];
+    final n = v is num ? v.toDouble() : double.tryParse('$v') ?? 0;
+    return n > 0;
+  }
 }
