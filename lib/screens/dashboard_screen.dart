@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_shell.dart';
+import '../widgets/brand_logo.dart';
 
 /// Dashboard (spec sec. 13). Phase 1 only has master-data KPIs to show
 /// for real; the Sales/Purchase/Inventory/Accounts tiles are wired up
@@ -212,20 +213,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         child: Row(
           children: [
-            Container(
-              width: 44,
-              height: 44,
-              alignment: Alignment.center,
-              decoration: AppColors.tintedBox(AppColors.brand,
-                  radius: 8, border: false),
-              child: const Icon(Icons.dashboard_customize_outlined,
-                  color: AppColors.brand),
-            ),
-            const SizedBox(width: 14),
+            const BrandLogo(height: 54),
+            const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Text(
+                    kCompanyName,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: AppColors.brand,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.2,
+                        ),
+                  ),
+                  const SizedBox(height: 2),
                   Text(
                     'Business overview',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(

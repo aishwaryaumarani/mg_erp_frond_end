@@ -59,14 +59,7 @@ class PdfPreviewPage extends StatelessWidget {
     }
   }
 
-  Future<void> _share(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await Printing.sharePdf(bytes: await buildDocumentPdf(doc), filename: '$_fileName.pdf');
-    } catch (e) {
-      _report(messenger, e);
-    }
-  }
+  Future<void> _share(BuildContext context) => downloadDocumentPdf(context, doc);
 
   @override
   Widget build(BuildContext context) {
@@ -128,6 +121,29 @@ class PdfPreviewPage extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Hands the viewer the PDF as a file: a browser download on web, the
+/// save/share sheet elsewhere. Any failure is shown on screen rather than
+/// left in the console, which is how the earlier silent failures hid.
+Future<void> downloadDocumentPdf(BuildContext context, DocumentView doc) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final fileName =
+      '${doc.docType}-${doc.docNo}'.replaceAll(RegExp(r'[^A-Za-z0-9\-_]'), '-');
+  try {
+    await Printing.sharePdf(bytes: await buildDocumentPdf(doc), filename: '$fileName.pdf');
+  } catch (e) {
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(e is MissingPluginException
+            ? 'Downloading is not available in this session. Fully stop the app '
+                '(q in the flutter terminal) and run it again -- a hot restart will not do it.'
+            : '$e'),
+        backgroundColor: AppColors.rose,
+        duration: const Duration(seconds: 8),
       ),
     );
   }

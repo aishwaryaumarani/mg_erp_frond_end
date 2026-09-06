@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../widgets/brand_logo.dart';
+
 /// One line of a printed document. Inquiries carry no pricing, so the
 /// money columns are dropped when [DocumentView.hasPricing] is false.
 class DocLineView {
@@ -94,6 +96,10 @@ String _qty(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStr
 /// one accent rule -- so it prints legibly on any office printer.
 Future<Uint8List> buildDocumentPdf(DocumentView doc) async {
   final pdf = pw.Document(title: '${doc.docType} ${doc.docNo}');
+  // Company mark, shared with the dashboard (widgets/brand_logo.dart).
+  // Null if the asset can't be read -- the document still prints.
+  final logoBytes = await loadLogoBytes();
+  final logo = logoBytes == null ? null : pw.MemoryImage(logoBytes);
   const accent = PdfColor.fromInt(0xFF1D4ED8);
   const muted = PdfColor.fromInt(0xFF64748B);
 
@@ -114,7 +120,7 @@ Future<Uint8List> buildDocumentPdf(DocumentView doc) async {
       footer: (context) => pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text('MG Chemicals', style: const pw.TextStyle(fontSize: 8, color: muted)),
+          pw.Text(kCompanyName, style: const pw.TextStyle(fontSize: 8, color: muted)),
           pw.Text('Page ${context.pageNumber} of ${context.pagesCount}',
               style: const pw.TextStyle(fontSize: 8, color: muted)),
         ],
@@ -125,12 +131,18 @@ Future<Uint8List> buildDocumentPdf(DocumentView doc) async {
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
-            pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-              pw.Text('MG Chemicals',
-                  style: const pw.TextStyle(
-                      fontSize: 18, fontWeight: pw.FontWeight.bold, color: accent)),
-              pw.SizedBox(height: 2),
-              pw.Text(doc.docType, style: const pw.TextStyle(fontSize: 12, color: muted)),
+            pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+              if (logo != null) ...[
+                pw.Image(logo, height: 52),
+                pw.SizedBox(width: 12),
+              ],
+              pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+                pw.Text(kCompanyName,
+                    style: const pw.TextStyle(
+                        fontSize: 15, fontWeight: pw.FontWeight.bold, color: accent)),
+                pw.SizedBox(height: 2),
+                pw.Text(doc.docType, style: const pw.TextStyle(fontSize: 12, color: muted)),
+              ]),
             ]),
             pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
               pw.Text(doc.docNo,

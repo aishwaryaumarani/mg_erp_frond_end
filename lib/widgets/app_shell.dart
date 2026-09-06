@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import 'brand_logo.dart';
 
 class NavLeaf {
   final String label;
@@ -127,22 +128,10 @@ class _AppShellState extends State<AppShell> {
       child: Row(
         children: [
           Container(
-            width: 42,
-            height: 42,
+            width: 46,
+            height: 46,
             alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.brand,
-              borderRadius: BorderRadius.circular(8),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.brand.withValues(alpha: 0.24),
-                  blurRadius: 16,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: const Icon(Icons.science_outlined,
-                color: Colors.white, size: 22),
+            child: const BrandLogo(height: 46),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -150,8 +139,8 @@ class _AppShellState extends State<AppShell> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'MG Chemicals',
-                  maxLines: 1,
+                  kCompanyName,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
@@ -403,7 +392,7 @@ class _TopBar extends StatelessWidget {
                       ),
                 ),
                 Text(
-                  'MG Chemicals',
+                  kCompanyName,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: AppColors.muted,
                         fontWeight: FontWeight.w600,

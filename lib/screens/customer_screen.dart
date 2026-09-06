@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
+import '../theme/app_theme.dart';
 import '../widgets/grade_field.dart';
 import '../widgets/master_crud_screen.dart';
 
@@ -45,6 +46,13 @@ class CustomerScreen extends StatelessWidget {
     final openingBalance = TextEditingController(text: existing?.openingBalance.toString() ?? '0');
     String status = existing?.status ?? 'Active';
     String? grade = existing?.grade;
+    // Most customers take delivery where they are billed. Ticked by
+    // default for a new customer, and for an existing one only when the
+    // two addresses already match -- ticking it on save would otherwise
+    // silently overwrite a shipping address someone entered deliberately.
+    bool sameAsBilling = existing == null
+        ? true
+        : (existing.shippingAddress ?? '').trim() == (existing.billingAddress ?? '').trim();
 
     return showDialog<Customer>(
       context: context,
@@ -69,9 +77,38 @@ class CustomerScreen extends StatelessWidget {
                   Expanded(child: TextField(controller: email, decoration: const InputDecoration(labelText: 'Email'))),
                 ]),
                 const SizedBox(height: 12),
-                TextField(controller: billing, decoration: const InputDecoration(labelText: 'Billing Address'), maxLines: 2),
-                const SizedBox(height: 12),
-                TextField(controller: shipping, decoration: const InputDecoration(labelText: 'Shipping Address'), maxLines: 2),
+                TextField(
+                  controller: billing,
+                  decoration: const InputDecoration(labelText: 'Billing Address'),
+                  maxLines: 2,
+                  // Keep the mirror live while the box is ticked, so what
+                  // is shown is what will be saved.
+                  onChanged: (v) {
+                    if (sameAsBilling) setState(() => shipping.text = v);
+                  },
+                ),
+                CheckboxListTile(
+                  value: sameAsBilling,
+                  onChanged: (v) => setState(() {
+                    sameAsBilling = v ?? false;
+                    if (sameAsBilling) shipping.text = billing.text;
+                  }),
+                  title: const Text('Shipping address same as billing'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                ),
+                TextField(
+                  controller: shipping,
+                  decoration: InputDecoration(
+                    labelText: 'Shipping Address',
+                    // Untick to type a different delivery address.
+                    fillColor: sameAsBilling ? AppColors.page : AppColors.surface,
+                    helperText: sameAsBilling ? 'Copied from the billing address' : null,
+                  ),
+                  maxLines: 2,
+                  readOnly: sameAsBilling,
+                ),
                 const SizedBox(height: 12),
                 Row(children: [
                   Expanded(child: TextField(controller: gstin, decoration: const InputDecoration(labelText: 'GSTIN'))),
@@ -125,7 +162,9 @@ class CustomerScreen extends StatelessWidget {
                     phone: phone.text.trim().isEmpty ? null : phone.text.trim(),
                     email: email.text.trim().isEmpty ? null : email.text.trim(),
                     billingAddress: billing.text.trim().isEmpty ? null : billing.text.trim(),
-                    shippingAddress: shipping.text.trim().isEmpty ? null : shipping.text.trim(),
+                    shippingAddress: sameAsBilling
+                        ? (billing.text.trim().isEmpty ? null : billing.text.trim())
+                        : (shipping.text.trim().isEmpty ? null : shipping.text.trim()),
                     gstin: gstin.text.trim().isEmpty ? null : gstin.text.trim(),
                     pan: pan.text.trim().isEmpty ? null : pan.text.trim(),
                     creditLimit: double.tryParse(creditLimit.text.trim()) ?? 0,

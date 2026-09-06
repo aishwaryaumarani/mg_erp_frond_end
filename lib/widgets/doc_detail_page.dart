@@ -176,10 +176,17 @@ class DocDetailPage extends StatelessWidget {
                   child: const Text('Close'),
                 ),
                 const SizedBox(width: 12),
+                // Straight to a file, without opening the preview first.
+                OutlinedButton.icon(
+                  onPressed: () => downloadDocumentPdf(context, doc),
+                  icon: const Icon(Icons.download_outlined),
+                  label: const Text('Download'),
+                ),
+                const SizedBox(width: 12),
                 FilledButton.icon(
                   onPressed: () => PdfPreviewPage.open(context, doc),
                   icon: const Icon(Icons.picture_as_pdf_outlined),
-                  label: const Text('PDF'),
+                  label: const Text('View PDF'),
                 ),
               ],
             ),
