@@ -1586,6 +1586,95 @@ class TaskChecklistItem {
   Map<String, dynamic> toJson() => {'title': title, 'is_done': isDone, 'position': position};
 }
 
+/// One line of the conversation with the customer on a task.
+///
+/// The running log, as opposed to `outcome` (the single summary written
+/// when the task is closed) and [CustomerDecision] (the conclusion, kept
+/// against the customer). Mirrors backend TaskNote.
+class TaskNote {
+  final int id;
+  final int taskId;
+  final String note;
+  final String? authorName;
+  final String? createdAt;
+
+  const TaskNote({
+    required this.id,
+    required this.taskId,
+    required this.note,
+    this.authorName,
+    this.createdAt,
+  });
+
+  factory TaskNote.fromJson(Map<String, dynamic> j) => TaskNote(
+        id: j['id'],
+        taskId: j['task_id'],
+        note: j['note'] ?? '',
+        authorName: j['author_name'],
+        createdAt: j['created_at'],
+      );
+}
+
+/// What a customer decided on a follow-up.
+///
+/// Recorded against the customer/lead, not the task -- so opening any
+/// follow-up shows every decision that customer has ever reached, not
+/// just the ones taken on that one call. Mirrors
+/// backend/app/models/tasks.py's CustomerDecision.
+class CustomerDecision {
+  final int id;
+  final String decision;
+  final String? notes;
+  final String? nextFollowUpDate;
+  final String decidedOn;
+  final int? taskId;
+  final String? taskNo;    // the task it was captured on
+  final String? taskTitle;
+  final String? partyName;
+  final String? recordedByName;
+
+  const CustomerDecision({
+    required this.id,
+    required this.decision,
+    this.notes,
+    this.nextFollowUpDate,
+    required this.decidedOn,
+    this.taskId,
+    this.taskNo,
+    this.taskTitle,
+    this.partyName,
+    this.recordedByName,
+  });
+
+  factory CustomerDecision.fromJson(Map<String, dynamic> j) => CustomerDecision(
+        id: j['id'],
+        decision: j['decision'] ?? '',
+        notes: j['notes'],
+        nextFollowUpDate: j['next_follow_up_date'],
+        decidedOn: j['decided_on'] ?? '',
+        taskId: j['task_id'],
+        taskNo: j['task_no'],
+        taskTitle: j['task_title'],
+        partyName: j['party_name'],
+        recordedByName: j['recorded_by_name'],
+      );
+}
+
+/// The decisions a customer can reach. Must match DECISIONS in
+/// backend/app/models/tasks.py -- the API rejects anything else.
+const kCustomerDecisions = [
+  'Interested',
+  'Needs more information',
+  'Wants a quotation',
+  'Wants a visit / demo',
+  'Price too high',
+  'Order confirmed',
+  'Postponed',
+  'Not interested',
+  'Lost to competitor',
+  'Other',
+];
+
 class TaskModel {
   final int? id;
   final String? taskNo; // server-assigned (TSK-0001)

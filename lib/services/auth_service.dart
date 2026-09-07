@@ -25,13 +25,40 @@ class AuthService extends ChangeNotifier {
   static const _kRole = 'auth_role';
   static const _kCompanyId = 'auth_company_id';
   static const _kFullName = 'auth_full_name';
+  static const _kEmail = 'auth_email';
   static const _kModules = 'auth_modules';
 
   String? token;
   String? role;
   int? companyId;
   String? fullName;
+  String? email;
   List<String> modules = const [];
+
+  /// Initials for the profile avatar -- "Gangadhar Kokitkar" -> "GK".
+  /// Falls back to the email so an account with a one-word name still
+  /// gets a mark rather than an empty circle.
+  String get initials {
+    final source = (fullName ?? '').trim().isNotEmpty ? fullName!.trim() : (email ?? '?');
+    final words = source.split(RegExp(r'[\s@._-]+')).where((w) => w.isNotEmpty).toList();
+    if (words.isEmpty) return '?';
+    if (words.length == 1) return words.first.substring(0, 1).toUpperCase();
+    return (words.first.substring(0, 1) + words[1].substring(0, 1)).toUpperCase();
+  }
+
+  /// Human name for the role code the backend stores.
+  String get roleLabel {
+    switch (role) {
+      case 'super_admin':
+        return 'Super Admin';
+      case 'company_admin':
+        return 'Company Admin';
+      case 'user':
+        return 'User';
+      default:
+        return role ?? '--';
+    }
+  }
 
   bool get isLoggedIn => token != null;
   bool get isSuperAdmin => role == 'super_admin';
@@ -48,6 +75,7 @@ class AuthService extends ChangeNotifier {
     role = prefs.getString(_kRole);
     companyId = prefs.getInt(_kCompanyId);
     fullName = prefs.getString(_kFullName);
+    email = prefs.getString(_kEmail);
     modules = prefs.getStringList(_kModules) ?? const [];
   }
 
@@ -61,7 +89,13 @@ class AuthService extends ChangeNotifier {
       final me = await ApiService.instance.getOne('/api/auth/me');
       modules = (me['modules'] as List<dynamic>).cast<String>();
       role = me['role'] as String;
-      await (await SharedPreferences.getInstance()).setStringList(_kModules, modules);
+      fullName = me['full_name'] as String? ?? fullName;
+      email = me['email'] as String? ?? email;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_kModules, modules);
+      await prefs.setString(_kRole, role!);
+      if (fullName != null) await prefs.setString(_kFullName, fullName!);
+      if (email != null) await prefs.setString(_kEmail, email!);
       notifyListeners();
     } catch (_) {
       // Offline or a dead token -- keep the cached menu. A dead token is
@@ -79,6 +113,8 @@ class AuthService extends ChangeNotifier {
     role = data['role'] as String;
     companyId = data['company_id'] as int?;
     fullName = data['full_name'] as String;
+    // `email` here is this method's parameter; the field needs `this`.
+    this.email = data['email'] as String? ?? this.email;
     modules = ((data['modules'] as List<dynamic>?) ?? const []).cast<String>();
 
     final prefs = await SharedPreferences.getInstance();
@@ -90,6 +126,7 @@ class AuthService extends ChangeNotifier {
       await prefs.remove(_kCompanyId);
     }
     await prefs.setString(_kFullName, fullName!);
+    if (this.email != null) await prefs.setString(_kEmail, this.email!);
     await prefs.setStringList(_kModules, modules);
 
     notifyListeners();
@@ -100,6 +137,7 @@ class AuthService extends ChangeNotifier {
     role = null;
     companyId = null;
     fullName = null;
+    email = null;
     modules = const [];
 
     final prefs = await SharedPreferences.getInstance();
@@ -107,6 +145,7 @@ class AuthService extends ChangeNotifier {
     await prefs.remove(_kRole);
     await prefs.remove(_kCompanyId);
     await prefs.remove(_kFullName);
+    await prefs.remove(_kEmail);
     await prefs.remove(_kModules);
 
     notifyListeners();

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'screens/profile_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/companies_screen.dart';
 import 'screens/users_screen.dart';
@@ -72,7 +73,7 @@ class MiniErpApp extends StatelessWidget {
   static Widget _superAdminShell() {
     return AppShell(
       title: 'Companies',
-      actions: [_logoutButton()],
+      actions: [_profileButton()],
       groups: [
         NavGroup('Companies', Icons.business_outlined, [
           NavLeaf('Companies', Icons.business_outlined, (ctx) => const CompaniesScreen()),
@@ -464,20 +465,101 @@ class MiniErpApp extends StatelessWidget {
 
     return AppShell(
       title: 'Dashboard',
-      actions: [_logoutButton()],
+      actions: [_profileButton()],
       // A group whose every leaf was filtered out would render as an
       // empty, unopenable row -- drop it instead.
       groups: groups.where((g) => g.children.isNotEmpty).toList(),
     );
   }
 
-  static Widget _logoutButton() {
+  /// Who is signed in, always visible in the app bar. The bare logout
+  /// icon it replaces never said *whose* session was about to end -- on a
+  /// shared office machine that is exactly the thing worth showing.
+  static Widget _profileButton() {
     return Builder(
-      builder: (context) => IconButton(
-        icon: const Icon(Icons.logout),
-        tooltip:
-            'Sign out${AuthService.instance.fullName != null ? ' (${AuthService.instance.fullName})' : ''}',
-        onPressed: () => AuthService.instance.logout(),
+      builder: (context) => AnimatedBuilder(
+        animation: AuthService.instance,
+        builder: (context, _) {
+          final auth = AuthService.instance;
+          return PopupMenuButton<String>(
+            tooltip: 'Signed in as ${auth.fullName ?? auth.email ?? 'this device'}',
+            offset: const Offset(0, 48),
+            onSelected: (v) {
+              switch (v) {
+                case 'profile':
+                  ProfileScreen.open(context);
+                case 'signout':
+                  AuthService.instance.logout();
+              }
+            },
+            itemBuilder: (ctx) => [
+              PopupMenuItem<String>(
+                enabled: false,
+                child: Row(children: [
+                  const ProfileAvatar(size: 40, fontSize: 15),
+                  const SizedBox(width: 12),
+                  // Flexible + ellipsis: a long name or email must not
+                  // burst the menu, which sizes itself to its widest item.
+                  Flexible(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(auth.fullName ?? '--',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w800, color: AppColors.ink)),
+                      if (auth.email != null)
+                        Text(auth.email!,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+                      Text(auth.roleLabel,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+                    ]),
+                  ),
+                ]),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem<String>(
+                value: 'profile',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.person_outline),
+                  title: Text('My Profile'),
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'signout',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.logout, color: AppColors.rose),
+                  title: Text('Sign out', style: TextStyle(color: AppColors.rose)),
+                ),
+              ),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const ProfileAvatar(),
+                // The name is dropped on a narrow window -- the avatar
+                // and the menu still say who this is.
+                if (MediaQuery.of(context).size.width >= 720) ...[
+                  const SizedBox(width: 10),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 160),
+                    child: Text(
+                      auth.fullName ?? auth.email ?? '',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.ink),
+                    ),
+                  ),
+                ],
+                const Icon(Icons.arrow_drop_down, color: AppColors.muted),
+              ]),
+            ),
+          );
+        },
       ),
     );
   }

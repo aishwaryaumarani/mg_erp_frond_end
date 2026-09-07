@@ -1,16 +1,26 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_shell.dart';
 import '../widgets/brand_logo.dart';
 
-/// Dashboard (spec sec. 13). Phase 1 only has master-data KPIs to show
-/// for real; the Sales/Purchase/Inventory/Accounts tiles are wired up
-/// and rendered now so the layout won't need to change later -- they
-/// just read 0 from the backend until those modules exist (see
-/// backend/app/routers/dashboard.py).
+/// Dashboard (spec sec. 13).
+///
+/// Which sections appear is the *server's* answer, not this file's:
+/// /api/dashboard/summary computes only the departments the signed-in
+/// user was granted and names them in `sections`
+/// (backend/app/routers/dashboard.py). Rendering from that list rather
+/// than from a second copy of the permission rules here is what keeps
+/// the two from drifting -- and means a section this user may not open
+/// is absent rather than showing a misleading zero.
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  /// Skips the fetch and renders this summary instead. Only for widget
+  /// tests -- the app always reads the real endpoint.
+  @visibleForTesting
+  final Map<String, dynamic>? initialSummary;
+
+  const DashboardScreen({super.key, this.initialSummary});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -28,6 +38,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialSummary != null) {
+      _summary = widget.initialSummary;
+      return;
+    }
     _load();
   }
 
@@ -83,6 +97,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final s = _summary!;
     _tileIndex = 0;
+    // Older builds of the API sent every key and no `sections`; treat
+    // that as "show everything" so a mismatched pair still renders.
+    final sections = ((s['sections'] as List<dynamic>?)?.cast<String>().toSet()) ??
+        const {'masters', 'sales', 'purchase', 'inventory', 'tasks', 'accounts'};
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
@@ -90,6 +108,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           _dashboardHeader(),
           const SizedBox(height: 24),
+          if (sections.isEmpty) _noSections(),
+          if (sections.contains('masters'))
           _section('Masters', [
             _kpi('Total Products', s['total_products'],
                 Icons.inventory_2_outlined,
@@ -102,6 +122,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Icons.local_shipping_outlined,
                 to: ('Masters', 'Suppliers')),
           ]),
+          if (sections.contains('sales'))
           _section('Sales (Phase 2/3)', [
             _kpi("Today's Sales", s['todays_sales'],
                 Icons.point_of_sale_outlined,
@@ -124,6 +145,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Icons.account_balance_wallet_outlined,
                 to: ('Sales', 'Receipts')),
           ]),
+          if (sections.contains('purchase'))
           _section('Purchase (Phase 4/5)', [
             _kpi("Today's Purchase", s['todays_purchase'],
                 Icons.shopping_cart_outlined,
@@ -138,6 +160,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Icons.account_balance_wallet_outlined,
                 to: ('Purchase', 'Payments')),
           ]),
+          if (sections.contains('inventory'))
           _section('Inventory (Phase 3/5)', [
             _kpi('Total Stock Value', s['total_stock_value'],
                 Icons.warehouse_outlined,
@@ -149,6 +172,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Icons.remove_shopping_cart_outlined,
                 color: AppColors.rose, to: ('Inventory', 'Stock')),
           ]),
+          if (sections.contains('tasks'))
           _section('Tasks (Reminders)', [
             _kpi('Open Tasks', s['open_tasks'], Icons.task_alt_outlined,
                 color: AppColors.brand, to: ('Tasks', 'Tasks & Reminders')),
@@ -165,6 +189,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ]),
           // Accounts screens are still ComingSoonScreen placeholders; the
           // tiles navigate anyway so the destination explains itself.
+          if (sections.contains('accounts'))
           _section('Accounts (Phase 6)', [
             _kpi('Receivable', s['receivable'], Icons.arrow_downward,
                 color: AppColors.green, to: ('Accounts', 'Receivables')),
@@ -180,6 +205,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
+
+  /// Shown when this login holds no departments at all. Without it the
+  /// dashboard would be a logo and nothing else, which reads as a bug
+  /// rather than as a permission that has not been granted yet.
+  Widget _noSections() => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: AppColors.tintedBox(AppColors.amber, radius: 12),
+        child: const Row(children: [
+          Icon(Icons.lock_outline, color: AppColors.amber),
+          SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('No departments granted yet',
+                  style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.amber)),
+              SizedBox(height: 4),
+              Text(
+                'Your admin decides which parts of the ERP you can open. '
+                'Ask them to grant you a department and this page will fill in.',
+                style: TextStyle(color: AppColors.slate, fontSize: 13),
+              ),
+            ]),
+          ),
+        ]),
+      );
 
   /// A titled block of KPI tiles. Tiles with no explicit colour take
   /// their accent from the section's module colour, cycled through

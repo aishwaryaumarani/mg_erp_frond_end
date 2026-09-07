@@ -170,6 +170,23 @@ class _TaskScreenState extends State<TaskScreen> {
     }
   }
 
+  /// "Call me back on Monday" -- moves the follow-up date without opening
+  /// the full edit form. PATCH /reschedule moves the reminder with it.
+  Future<void> _reschedule(TaskModel t) async {
+    final body = await openRescheduleDialog(context, t);
+    if (body == null) return;
+    try {
+      await ApiService.instance.patch('/api/tasks/${t.id}/reschedule', body);
+      _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Follow-up moved to ${body['due_date']}.')),
+      );
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
   Future<void> _setStatus(TaskModel t, String status) async {
     try {
       await ApiService.instance.patch('/api/tasks/${t.id}/status', {'status': status});
@@ -179,35 +196,10 @@ class _TaskScreenState extends State<TaskScreen> {
     }
   }
 
-  Future<void> _delete(TaskModel t) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete task?'),
-        content: Text('Delete "${t.title}"?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    try {
-      await ApiService.instance.delete('/api/tasks/${t.id}');
-      _load();
-    } catch (e) {
-      _showError(e);
-    }
-  }
-
   Future<void> _openDetail(TaskModel t) async {
     await showDialog(
       context: context,
-      builder: (ctx) => _TaskDetailDialog(task: t, onChanged: _load),
+      builder: (ctx) => TaskDetailDialog(task: t, onChanged: _load),
     );
   }
 
@@ -437,18 +429,21 @@ class _TaskScreenState extends State<TaskScreen> {
                 _setStatus(t, 'In Progress');
               case 'reopen':
                 _setStatus(t, 'Pending');
-              case 'cancel':
-                _setStatus(t, 'Cancelled');
-              case 'delete':
-                _delete(t);
+              case 'reschedule':
+                _reschedule(t);
             }
           },
           itemBuilder: (ctx) => [
             if (t.isOpen) const PopupMenuItem(value: 'edit', child: Text('Edit')),
+            if (t.isOpen)
+              const PopupMenuItem(value: 'reschedule', child: Text('Change follow-up date')),
             if (t.status == 'Pending') const PopupMenuItem(value: 'start', child: Text('Mark In Progress')),
             if (!t.isOpen) const PopupMenuItem(value: 'reopen', child: Text('Reopen')),
-            if (t.isOpen) const PopupMenuItem(value: 'cancel', child: Text('Cancel task')),
-            const PopupMenuItem(value: 'delete', child: Text('Delete')),
+            // Neither "Cancel task" nor "Delete": a follow-up and the
+            // conversation logged against it are a record of what happened
+            // with a customer, so this screen never destroys one. A task
+            // that is done is completed with an outcome; one that is not
+            // yet due is moved with "Change follow-up date".
           ],
         ),
       ]),
@@ -462,31 +457,106 @@ class _TaskScreenState extends State<TaskScreen> {
 // batched into a save, so a half-finished checklist is never lost.
 // ---------------------------------------------------------------------------
 
-class _TaskDetailDialog extends StatefulWidget {
+/// Public so a customer or lead screen can open a follow-up without
+/// duplicating this dialog, the same way [openTaskForm] is.
+class TaskDetailDialog extends StatefulWidget {
   final TaskModel task;
   final VoidCallback onChanged;
-  const _TaskDetailDialog({required this.task, required this.onChanged});
+  const TaskDetailDialog({super.key, required this.task, required this.onChanged});
 
   @override
-  State<_TaskDetailDialog> createState() => _TaskDetailDialogState();
+  State<TaskDetailDialog> createState() => _TaskDetailDialogState();
 }
 
-class _TaskDetailDialogState extends State<_TaskDetailDialog> {
+class _TaskDetailDialogState extends State<TaskDetailDialog> {
   late TaskModel _task = widget.task;
   final _newItemCtrl = TextEditingController();
   bool _busy = false;
 
+  /// Every decision this customer has reached -- across all their tasks,
+  /// not just this one. Empty for a task with no customer or lead.
+  List<CustomerDecision> _decisions = [];
+  bool _decisionsLoading = true;
+
+  /// The conversation on this task, oldest first.
+  List<TaskNote> _notes = [];
+  bool _notesLoading = true;
+  final _newNoteCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDecisions();
+    _loadNotes();
+  }
+
   @override
   void dispose() {
     _newItemCtrl.dispose();
+    _newNoteCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadNotes() async {
+    try {
+      final rows = await ApiService.instance.list('/api/tasks/${_task.id}/notes');
+      if (!mounted) return;
+      setState(() {
+        _notes = rows.map((e) => TaskNote.fromJson(e as Map<String, dynamic>)).toList();
+        _notesLoading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _notesLoading = false);
+    }
+  }
+
+  void _addNote() {
+    final text = _newNoteCtrl.text.trim();
+    if (text.isEmpty) return;
+    _newNoteCtrl.clear();
+    _run(() => ApiService.instance
+        .create('/api/tasks/${_task.id}/notes', {'note': text}).then((_) {}));
+  }
+
+  Future<void> _loadDecisions() async {
+    try {
+      final rows = await ApiService.instance.list('/api/tasks/${_task.id}/decisions');
+      if (!mounted) return;
+      setState(() {
+        _decisions = rows
+            .map((e) => CustomerDecision.fromJson(e as Map<String, dynamic>))
+            .toList();
+        _decisionsLoading = false;
+      });
+    } catch (_) {
+      // The task itself is still worth showing if the history won't load.
+      if (mounted) setState(() => _decisionsLoading = false);
+    }
   }
 
   Future<void> _refresh() async {
     final json = await ApiService.instance.getOne('/api/tasks/${_task.id}');
     if (!mounted) return;
     setState(() => _task = TaskModel.fromJson(json));
+    await _loadDecisions();
+    await _loadNotes();
     widget.onChanged();
+  }
+
+  Future<void> _addDecision() async {
+    final body = await openDecisionDialog(context, _task);
+    if (body == null) return;
+    await _run(() => ApiService.instance
+        .create('/api/tasks/${_task.id}/decisions', body)
+        .then((_) {}));
+  }
+
+  Future<void> _rescheduleFromDetail() async {
+    final body = await openRescheduleDialog(context, _task);
+    if (body == null) return;
+    await _run(() => ApiService.instance
+        .patch('/api/tasks/${_task.id}/reschedule', body)
+        .then((_) {}));
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -518,16 +588,33 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog> {
         width: 520,
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              StatusBadge(status: t.status),
-              _pill(t.taskType, AppColors.violet),
-              _pill(t.priority, _TaskScreenState.priorityColor(t.priority)),
-              if (t.dueDate != null)
-                _pill('Due ${t.dueDate}', t.isOverdue ? AppColors.rose : AppColors.slate),
-              if (t.reminderDate != null && t.reminderDate != t.dueDate)
-                _pill('Remind ${t.reminderDate}', AppColors.amber),
-            ]),
-            const SizedBox(height: 14),
+            // Status, type and priority are already on the row this dialog
+            // opened from -- repeating them here only pushed the part
+            // people came for (the conversation) below the fold. The
+            // follow-up date stays: it is the thing being changed.
+            if (t.dueDate != null)
+              Row(children: [
+                Icon(Icons.event_outlined,
+                    size: 16, color: t.isOverdue ? AppColors.rose : AppColors.slate),
+                const SizedBox(width: 6),
+                Text(
+                  'Follow up on ${t.dueDate}'
+                  '${t.reminderDate != null && t.reminderDate != t.dueDate ? '  ·  remind ${t.reminderDate}' : ''}'
+                  '${t.isOverdue ? '  ·  overdue' : ''}',
+                  style: TextStyle(
+                    color: t.isOverdue ? AppColors.rose : AppColors.slate,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+                const Spacer(),
+                if (t.isOpen)
+                  TextButton(
+                    onPressed: _busy ? null : _rescheduleFromDetail,
+                    child: const Text('Change'),
+                  ),
+              ]),
+            const SizedBox(height: 10),
             if (t.taskNo != null)
               Text(t.taskNo!, style: const TextStyle(color: AppColors.slate, fontSize: 12)),
             if (t.partyName != null)
@@ -553,6 +640,73 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog> {
                 decoration: AppColors.tintedBox(AppColors.green),
                 child: Text(t.outcome!, style: const TextStyle(color: AppColors.green)),
               ),
+            ],
+            const SizedBox(height: 16),
+            Row(children: [
+              Text('Conversation', style: Theme.of(context).textTheme.titleSmall),
+              const Spacer(),
+              if (_notes.isNotEmpty)
+                Text('${_notes.length} note${_notes.length == 1 ? '' : 's'}',
+                    style: const TextStyle(color: AppColors.slate, fontSize: 12)),
+            ]),
+            const Text('What was said, promised or agreed on this follow-up.',
+                style: TextStyle(color: AppColors.slate, fontSize: 12)),
+            const SizedBox(height: 8),
+            if (_notesLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: LinearProgressIndicator(minHeight: 2),
+              )
+            else
+              for (final n in _notes) _noteTile(n),
+            Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: _newNoteCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Add a note / what the customer said',
+                    isDense: true,
+                  ),
+                  // Enter sends; Shift+Enter is not a thing on a plain
+                  // TextField, so multiline notes go in via the wrap.
+                  minLines: 1,
+                  maxLines: 4,
+                  textCapitalization: TextCapitalization.sentences,
+                  onSubmitted: (_) => _addNote(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filled(
+                icon: const Icon(Icons.send_outlined, size: 18),
+                tooltip: 'Add note',
+                onPressed: _busy ? null : _addNote,
+              ),
+            ]),
+            if (t.customerId != null || t.leadId != null) ...[
+              const SizedBox(height: 16),
+              Row(children: [
+                Text('Customer decisions', style: Theme.of(context).textTheme.titleSmall),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: _busy ? null : _addDecision,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add decision'),
+                ),
+              ]),
+              if (t.partyName != null)
+                Text('Everything ${t.partyName} has decided, newest first',
+                    style: const TextStyle(color: AppColors.slate, fontSize: 12)),
+              const SizedBox(height: 6),
+              if (_decisionsLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: LinearProgressIndicator(minHeight: 2),
+                )
+              else if (_decisions.isEmpty)
+                const Text('No decisions recorded yet.',
+                    style: TextStyle(color: AppColors.slate, fontSize: 12))
+              else
+                for (final d in _decisions) _decisionTile(d),
             ],
             const SizedBox(height: 16),
             Row(children: [
@@ -627,11 +781,106 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog> {
         .create('/api/tasks/${_task.id}/checklist', {'title': title}).then((_) {}));
   }
 
-  Widget _pill(String text, Color color) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: AppColors.tintedBox(color, radius: 20),
-        child: Text(text, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
-      );
+  /// One entry in the conversation. Author and time are stamped by the
+  /// server, so a note always says who actually wrote it.
+  Widget _noteTile(TaskNote n) {
+    final when = (n.createdAt ?? '').replaceFirst('T', ' ').split('.').first;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.page,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(
+            child: Text(
+              [if (n.authorName != null) n.authorName!, if (when.isNotEmpty) when].join('  ·  '),
+              style: const TextStyle(color: AppColors.slate, fontSize: 11),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 16),
+            tooltip: 'Remove note',
+            visualDensity: VisualDensity.compact,
+            onPressed: _busy
+                ? null
+                : () => _run(() =>
+                    ApiService.instance.delete('/api/tasks/${_task.id}/notes/${n.id}')),
+          ),
+        ]),
+        Text(n.note),
+      ]),
+    );
+  }
+
+  /// One line of the history, labelled with the task it was taken on so
+  /// it is clear which call produced it -- most of these were recorded on
+  /// earlier follow-ups, not the one being looked at.
+  Widget _decisionTile(CustomerDecision d) {
+    final colour = decisionColor(d.decision);
+    final here = d.taskId == _task.id;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: AppColors.tintedBox(colour, radius: 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(
+            child: Text(d.decision,
+                style: TextStyle(color: colour, fontWeight: FontWeight.w700, fontSize: 13)),
+          ),
+          Text(d.decidedOn, style: const TextStyle(color: AppColors.slate, fontSize: 11)),
+          if (here)
+            IconButton(
+              icon: const Icon(Icons.close, size: 16),
+              tooltip: 'Remove',
+              visualDensity: VisualDensity.compact,
+              onPressed: _busy
+                  ? null
+                  : () => _run(() => ApiService.instance
+                      .delete('/api/tasks/${_task.id}/decisions/${d.id}')),
+            ),
+        ]),
+        if (d.notes != null && d.notes!.isNotEmpty)
+          Text(d.notes!, style: const TextStyle(fontSize: 12)),
+        Text(
+          [
+            if (d.taskNo != null) here ? 'on this task' : 'on ${d.taskNo}',
+            if (d.recordedByName != null) 'by ${d.recordedByName}',
+            if (d.nextFollowUpDate != null) 'agreed follow-up ${d.nextFollowUpDate}',
+          ].join(' • '),
+          style: const TextStyle(color: AppColors.slate, fontSize: 11),
+        ),
+      ]),
+    );
+  }
+
+  /// Green for the ones worth chasing, rose for the ones that are gone,
+  /// amber for "not yet" -- so a customer's history reads at a glance.
+  static Color decisionColor(String decision) {
+    switch (decision) {
+      case 'Order confirmed':
+      case 'Interested':
+      case 'Wants a quotation':
+      case 'Wants a visit / demo':
+        return AppColors.green;
+      case 'Not interested':
+      case 'Lost to competitor':
+        return AppColors.rose;
+      case 'Price too high':
+      case 'Postponed':
+      case 'Needs more information':
+        return AppColors.amber;
+      default:
+        return AppColors.slate;
+    }
+  }
+
 }
 
 // ---------------------------------------------------------------------------
@@ -1002,11 +1251,165 @@ Future<Map<String, dynamic>?> _openFollowUpForm(
 /// Complete dialog -- records what happened and, optionally, books the
 /// next follow-up in the same call, since a follow-up usually ends by
 /// agreeing when to talk again.
+/// Move an open task's follow-up date. Public so a customer or lead
+/// screen can reschedule without reaching into this file's privates.
+Future<Map<String, dynamic>?> openRescheduleDialog(BuildContext context, TaskModel task) {
+  final dateCtrl = TextEditingController(
+    text: task.dueDate ?? DateTime.now().add(const Duration(days: 7)).toIso8601String().substring(0, 10),
+  );
+  final noteCtrl = TextEditingController();
+  // Off by default: the reminder should follow the call unless someone
+  // deliberately wants warning earlier.
+  bool separateReminder = task.reminderDate != null && task.reminderDate != task.dueDate;
+  final remindCtrl = TextEditingController(text: separateReminder ? task.reminderDate : '');
+
+  return showDialog<Map<String, dynamic>>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(builder: (ctx, setState) {
+      return AlertDialog(
+        title: const Text('Change follow-up date'),
+        content: SizedBox(
+          width: 440,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(task.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+              if (task.dueDate != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text('Currently ${task.dueDate}',
+                      style: const TextStyle(color: AppColors.slate, fontSize: 12)),
+                ),
+              const SizedBox(height: 14),
+              _DateField(
+                controller: dateCtrl,
+                label: 'Next follow-up on',
+                onPicked: () => setState(() {}),
+              ),
+              const SizedBox(height: 4),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                dense: true,
+                value: separateReminder,
+                title: const Text('Remind me on a different day'),
+                onChanged: (v) => setState(() {
+                  separateReminder = v ?? false;
+                  if (!separateReminder) remindCtrl.clear();
+                }),
+              ),
+              if (separateReminder)
+                _DateField(
+                  controller: remindCtrl,
+                  label: 'Remind on',
+                  onPicked: () => setState(() {}),
+                ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: noteCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Why is it moving? (optional)',
+                  hintText: 'e.g. Asked to call after the festival',
+                ),
+                maxLines: 2,
+                textCapitalization: TextCapitalization.sentences,
+              ),
+            ]),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: dateCtrl.text.trim().isEmpty
+                ? null
+                : () => Navigator.pop(ctx, {
+                      'due_date': dateCtrl.text.trim(),
+                      'reminder_date':
+                          separateReminder && remindCtrl.text.trim().isNotEmpty ? remindCtrl.text.trim() : null,
+                      'note': noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
+                    }),
+            child: const Text('Move follow-up'),
+          ),
+        ],
+      );
+    }),
+  );
+}
+
+/// Record what the customer decided. Returns the CustomerDecisionCreate
+/// body; the caller posts it to /api/tasks/{id}/decisions, which fills in
+/// the customer from the task so it can never land on the wrong one.
+Future<Map<String, dynamic>?> openDecisionDialog(BuildContext context, TaskModel task) {
+  String decision = kCustomerDecisions.first;
+  final notesCtrl = TextEditingController();
+  final nextCtrl = TextEditingController();
+
+  return showDialog<Map<String, dynamic>>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(builder: (ctx, setState) {
+      return AlertDialog(
+        title: const Text('Add customer decision'),
+        content: SizedBox(
+          width: 440,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              if (task.partyName != null)
+                Text(task.partyName!, style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: decision,
+                decoration: const InputDecoration(labelText: 'What did they decide?'),
+                items: [
+                  for (final d in kCustomerDecisions)
+                    DropdownMenuItem(value: d, child: Text(d)),
+                ],
+                onChanged: (v) => setState(() => decision = v ?? decision),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: notesCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'In their words (optional)',
+                  hintText: 'e.g. Wants 5% off, will confirm after harvest',
+                ),
+                maxLines: 3,
+                textCapitalization: TextCapitalization.sentences,
+              ),
+              const SizedBox(height: 12),
+              _DateField(
+                controller: nextCtrl,
+                label: 'Date agreed with them (optional)',
+                helper: 'Noted against the decision. Use "Change follow-up date" to move the task.',
+                onPicked: () => setState(() {}),
+              ),
+            ]),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, {
+              'decision': decision,
+              'notes': notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
+              'next_follow_up_date': nextCtrl.text.trim().isEmpty ? null : nextCtrl.text.trim(),
+            }),
+            child: const Text('Save decision'),
+          ),
+        ],
+      );
+    }),
+  );
+}
+
 Future<Map<String, dynamic>?> _openCompleteDialog(BuildContext context, TaskModel task) {
   final outcomeCtrl = TextEditingController();
   final nextDateCtrl = TextEditingController();
   final nextDescCtrl = TextEditingController();
   bool bookNext = false;
+  // The end of a call is when the decision is actually known, so it is
+  // captured here as well as from the detail dialog. Null = don't record
+  // one; a task with no customer or lead can't have one at all.
+  final canDecide = task.customerId != null || task.leadId != null;
+  String? decision;
 
   return showDialog<Map<String, dynamic>>(
     context: context,
@@ -1028,6 +1431,22 @@ Future<Map<String, dynamic>?> _openCompleteDialog(BuildContext context, TaskMode
                 maxLines: 3,
                 textCapitalization: TextCapitalization.sentences,
               ),
+              if (canDecide) ...[
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  initialValue: decision,
+                  decoration: const InputDecoration(
+                    labelText: 'Customer decision (optional)',
+                    helperText: 'Kept against the customer, visible on every later follow-up',
+                  ),
+                  items: [
+                    const DropdownMenuItem<String?>(value: null, child: Text('Not recorded')),
+                    for (final d in kCustomerDecisions)
+                      DropdownMenuItem<String?>(value: d, child: Text(d)),
+                  ],
+                  onChanged: (v) => setState(() => decision = v),
+                ),
+              ],
               const SizedBox(height: 8),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
@@ -1064,6 +1483,11 @@ Future<Map<String, dynamic>?> _openCompleteDialog(BuildContext context, TaskMode
                   bookNext && nextDateCtrl.text.trim().isNotEmpty ? nextDateCtrl.text.trim() : null,
               'next_follow_up_description':
                   bookNext && nextDescCtrl.text.trim().isNotEmpty ? nextDescCtrl.text.trim() : null,
+              'decision': decision,
+              // The outcome doubles as the decision's note -- it is the
+              // same sentence, and asking for it twice would be silly.
+              'decision_notes':
+                  decision == null || outcomeCtrl.text.trim().isEmpty ? null : outcomeCtrl.text.trim(),
             }),
             child: const Text('Complete'),
           ),
