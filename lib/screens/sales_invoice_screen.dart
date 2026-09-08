@@ -109,6 +109,7 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
         if ((customer?.placeOfSupply ?? '').isNotEmpty)
           'Place of supply': customer!.placeOfSupply!,
         if (inv.salesOrderId != null) 'From sales order': '#${inv.salesOrderId}',
+        if (inv.quotationId != null) 'From proforma': '#${inv.quotationId}',
       },
       billingAddress: customer?.billingAddress,
       shippingAddress: customer?.shippingAddress,
@@ -224,6 +225,24 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
     }
   }
 
+  /// The short path's last step: the goods follow the invoice, because
+  /// there is no sales order to hang the delivery off. Confirming the
+  /// Delivery is still the only thing that moves stock.
+  Future<void> _sendToDelivery(SalesInvoice inv) async {
+    try {
+      final json = await ApiService.instance
+          .create('/api/sales-invoices/${inv.id}/create-delivery', {});
+      _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(
+            'Delivery ${json['delivery_no'] ?? ''} created — confirm it in Deliveries to move the stock.')),
+      );
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
   /// Posts AR Dr / Sales Cr / Output Tax Cr and locks the invoice
   /// (backend/app/routers/sales_invoices.py's post endpoint).
   Future<void> _post(SalesInvoice inv) async {
@@ -283,7 +302,8 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
                             title: Text('${inv.invoiceNo ?? '#${inv.id}'} — ${_customerName(inv.customerId)}'),
                             subtitle: Text('${inv.invoiceDate ?? 'no date'} • ${inv.items.length} line(s) • Total ₹${inv.totalAmount.toStringAsFixed(2)}'
                                 ' • Outstanding ₹${inv.outstanding.toStringAsFixed(2)}'
-                                '${inv.salesOrderId != null ? ' • from Sales Order #${inv.salesOrderId}' : ''}'),
+                                '${inv.salesOrderId != null ? ' • from Sales Order #${inv.salesOrderId}' : ''}'
+                                '${inv.quotationId != null ? ' • from Proforma #${inv.quotationId}' : ''}'),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -294,6 +314,27 @@ class _SalesInvoiceScreenState extends State<SalesInvoiceScreen> {
                                     onPressed: () => _post(inv),
                                     icon: const Icon(Icons.check_circle_outline, size: 18),
                                     label: const Text('Post'),
+                                  ),
+                                // Posted and not yet shipped: offer it
+                                // once. A Draft invoice is refused by the
+                                // server -- stock should not leave against
+                                // a document that is not in the books.
+                                if (inv.status != 'Draft' &&
+                                    inv.status != 'Cancelled' &&
+                                    !inv.hasDelivery)
+                                  OutlinedButton.icon(
+                                    onPressed: () => _sendToDelivery(inv),
+                                    icon: const Icon(Icons.local_shipping_outlined, size: 18),
+                                    label: const Text('Send to Delivery'),
+                                  ),
+                                if (inv.hasDelivery)
+                                  const Padding(
+                                    padding: EdgeInsets.only(right: 4),
+                                    child: Chip(
+                                      visualDensity: VisualDensity.compact,
+                                      label: Text('Sent to Delivery',
+                                          style: TextStyle(fontSize: 11)),
+                                    ),
                                   ),
                                 // E-invoice and e-way bill live behind this
                                 // button: explicit actions, never automatic.

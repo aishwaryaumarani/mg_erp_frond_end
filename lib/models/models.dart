@@ -643,6 +643,10 @@ class Quotation {
   /// Server-set: the document has been moved on to the next step, so
   /// its status is frozen (backend/app/core/workflow.py).
   final bool isLocked;
+  /// Server-set: what this proforma became -- 'sales order' or 'sales
+  /// invoice'. Null while it is still open. A locked row with no word for
+  /// what happened to it just looks broken, so the screen shows this.
+  final String? convertedTo;
   /// Snapshot of the customer's addresses taken when the document is
   /// raised -- edited per document, never written back to the master.
   String? billingAddress;
@@ -663,6 +667,7 @@ class Quotation {
     this.validUntil,
     this.status = 'Draft',
     this.isLocked = false,
+    this.convertedTo,
     this.billingAddress,
     this.shippingAddress,
     this.notes,
@@ -682,6 +687,7 @@ class Quotation {
         validUntil: j['valid_until'],
         status: j['status'] ?? 'Draft',
         isLocked: j['is_locked'] ?? false,
+        convertedTo: j['converted_to'],
         billingAddress: j['billing_address'],
         shippingAddress: j['shipping_address'],
         notes: j['notes'],
@@ -1299,6 +1305,12 @@ class SalesInvoice {
   final int? id;
   String? invoiceNo;
   int? salesOrderId;
+  /// Set instead of [salesOrderId] when the proforma invoice was billed
+  /// directly, with no sales order in between.
+  final int? quotationId;
+  /// Server-set: goods have already gone out against this invoice, so
+  /// "Send to Delivery" is offered once rather than every time.
+  final bool hasDelivery;
   int customerId;
   String? invoiceDate;
   String? dueDate;
@@ -1315,6 +1327,8 @@ class SalesInvoice {
     this.id,
     this.invoiceNo,
     this.salesOrderId,
+    this.quotationId,
+    this.hasDelivery = false,
     required this.customerId,
     this.invoiceDate,
     this.dueDate,
@@ -1334,6 +1348,8 @@ class SalesInvoice {
         id: j['id'],
         invoiceNo: j['invoice_no'],
         salesOrderId: j['sales_order_id'],
+        quotationId: j['quotation_id'],
+        hasDelivery: j['has_delivery'] ?? false,
         customerId: j['customer_id'],
         invoiceDate: j['invoice_date'],
         dueDate: j['due_date'],

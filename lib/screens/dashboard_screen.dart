@@ -132,7 +132,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 to: ('Sales', 'Sales Invoices')),
             _kpi('Pending Quotations', s['pending_quotations'],
                 Icons.request_quote_outlined,
-                to: ('Sales', 'Quotations')),
+                to: ('Sales', 'Quotations / Proforma')),
             _kpi('Pending Sales Orders', s['pending_sales_orders'],
                 Icons.receipt_long_outlined,
                 to: ('Sales', 'Sales Orders')),

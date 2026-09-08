@@ -10,8 +10,21 @@ import '../widgets/quick_add.dart';
 import '../widgets/status_badge.dart';
 import '../widgets/workflow_actions.dart';
 
-/// Quotation screen -- sits between Inquiry and Sales Order. A Quotation
-/// can be raised standalone ("New Quotation") or, more commonly, from an
+/// Quotation / Proforma Invoice screen.
+///
+/// One document, two names, because it is used two ways here:
+///  * as a **quotation** on the long path -- Inquiry -> Quotation ->
+///    Sales Order -> Delivery -> Invoice;
+///  * as a **proforma invoice** on the short path the client actually
+///    works -- the proforma is sent, the customer accepts it as the
+///    order, the tax invoice is raised straight off it, and the goods
+///    follow the invoice.
+///
+/// Approving it offers both "Convert to Sales Order" and "Create Sales
+/// Invoice"; taking either locks the document, so the same goods can
+/// never travel down both paths.
+///
+/// It can be raised standalone ("New Quotation") or, more commonly, from an
 /// Inquiry via [openQuotationForm] (see inquiry_screen.dart), which
 /// pre-fills the customer and copies the inquiry's product lines so
 /// pricing/tax/discount only need to be added, not re-entered (spec:
@@ -82,7 +95,7 @@ class _QuotationScreenState extends State<QuotationScreen> {
   /// amounts are shown pre-tax so they add up to the server's subtotal;
   /// tax lands once in the totals block.
   DocumentView _viewOf(Quotation q) => DocumentView(
-        docType: 'Quotation',
+        docType: 'Quotation / Proforma Invoice',
         docNo: q.quotationNo ?? '#${q.id}',
         status: q.status,
         isLocked: q.isLocked,
@@ -182,6 +195,37 @@ class _QuotationScreenState extends State<QuotationScreen> {
     }
   }
 
+  /// The short path: bill the proforma directly, no sales order in
+  /// between (POST /api/quotations/{id}/create-invoice). Locks the
+  /// proforma, so "Convert to Sales Order" disappears with it.
+  Future<void> _createInvoice(Quotation q) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Create Sales Invoice?'),
+        content: Text(
+          'Bills ${q.quotationNo ?? '#${q.id}'} directly, with no sales order in between.\n\n'
+          'This closes the sales-order route for this proforma -- it can only go one way.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Create Invoice')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final json = await ApiService.instance.create('/api/quotations/${q.id}/create-invoice', {});
+      _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sales Invoice ${json['invoice_no'] ?? ''} created — open Sales Invoices to post it.')),
+      );
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
   void _showError(Object e) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(e is ApiException ? e.message : e.toString()), backgroundColor: Colors.red),
@@ -197,12 +241,13 @@ class _QuotationScreenState extends State<QuotationScreen> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              Text('Quotations', style: Theme.of(context).textTheme.titleMedium),
+              Text('Quotations / Proforma Invoices',
+                  style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
               FilledButton.icon(
                 onPressed: _create,
                 icon: const Icon(Icons.add),
-                label: const Text('New Quotation'),
+                label: const Text('New Quotation / Proforma'),
               ),
             ],
           ),
@@ -213,7 +258,7 @@ class _QuotationScreenState extends State<QuotationScreen> {
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : _quotations.isEmpty
-                  ? const Center(child: Text('No quotations yet.'))
+                  ? const Center(child: Text('No quotations or proforma invoices yet.'))
                   : RefreshIndicator(
                       onRefresh: _load,
                       child: ListView.separated(
@@ -240,12 +285,33 @@ class _QuotationScreenState extends State<QuotationScreen> {
                                   onError: _showError,
                                 ),
                                 const SizedBox(width: 8),
-                                // Only an approved quotation becomes an order.
-                                if (canMoveOn(q.status) && !q.isLocked)
+                                // Approved and not yet converted: both
+                                // paths are open. The short one (straight
+                                // to an invoice) is what the client uses,
+                                // so it leads.
+                                if (canMoveOn(q.status) && !q.isLocked) ...[
+                                  IconButton(
+                                    icon: const Icon(Icons.request_quote_outlined),
+                                    tooltip: 'Create Sales Invoice (no sales order)',
+                                    onPressed: () => _createInvoice(q),
+                                  ),
                                   IconButton(
                                     icon: const Icon(Icons.receipt_long_outlined),
                                     tooltip: 'Convert to Sales Order',
                                     onPressed: () => _convertToOrder(q),
+                                  ),
+                                ],
+                                // Converted: say which way it went instead
+                                // of leaving a locked row with no
+                                // explanation.
+                                if (q.convertedTo != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 4),
+                                    child: Chip(
+                                      visualDensity: VisualDensity.compact,
+                                      label: Text('→ ${q.convertedTo}',
+                                          style: const TextStyle(fontSize: 11)),
+                                    ),
                                   ),
                                 IconButton(
                                   icon: const Icon(Icons.visibility_outlined),

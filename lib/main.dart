@@ -125,7 +125,7 @@ class MiniErpApp extends StatelessWidget {
       if (can('sales'))
         const NavGroup('Sales', Icons.point_of_sale_outlined, [
           NavLeaf('Inquiries', Icons.help_outline, _inquiries),
-          NavLeaf('Quotations', Icons.request_quote_outlined, _quotations),
+          NavLeaf('Quotations / Proforma', Icons.request_quote_outlined, _quotations),
           NavLeaf('Sales Orders', Icons.receipt_long_outlined, _salesOrders),
           NavLeaf('Deliveries', Icons.local_shipping_outlined, _deliveries),
           NavLeaf('Sales Invoices', Icons.description_outlined, _salesInvoices),
