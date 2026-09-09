@@ -6,6 +6,7 @@ import '../widgets/doc_detail_page.dart';
 import '../widgets/doc_address_fields.dart';
 import '../widgets/doc_form_page.dart';
 import '../widgets/doc_items_editor.dart';
+import '../widgets/order_charges_editor.dart';
 import '../widgets/quick_add.dart';
 import '../widgets/status_badge.dart';
 import '../widgets/workflow_actions.dart';
@@ -120,7 +121,15 @@ class _QuotationScreenState extends State<QuotationScreen> {
             lineTotal: e.lineSubtotal,
           );
         }).toList(),
+        charges: q.charges
+            .map((c) => DocChargeView(
+                  label: c.label,
+                  amount: c.amount,
+                  taxPercent: c.taxPercent,
+                ))
+            .toList(),
         subtotal: q.subtotal,
+        chargesTotal: q.chargesTotal,
         taxAmount: q.taxAmount,
         totalAmount: q.totalAmount,
         notes: q.notes,
@@ -360,6 +369,7 @@ Future<Quotation?> openQuotationForm(
   // so the live total preview is correct immediately, not just after the
   // user re-touches a row's Tax dropdown -- see models.dart withTaxRates().
   List<DocLineItem> items = existing == null ? [] : withTaxRates(existing.items, taxes);
+  List<OrderCharge> charges = existing?.charges ?? [];
 
   // New quotation -> start from the customer master. An existing one
   // (including one just converted from an Inquiry, which carries the
@@ -418,6 +428,7 @@ Future<Quotation?> openQuotationForm(
               shippingAddress: shipping.text.trim().isEmpty ? null : shipping.text.trim(),
               notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
               items: items,
+              charges: charges.where((c) => c.label.trim().isNotEmpty).toList(),
             ),
           );
         },
@@ -464,6 +475,18 @@ Future<Quotation?> openQuotationForm(
                 initialItems: items,
                 onChanged: (updated) => items = updated,
                 onProductCreated: products.add,
+              ),
+            ],
+          ),
+          DocFormSection(
+            title: 'Extra charges',
+            hint: 'Labour, parking, freight and the like -- each with its own tax rate. '
+                'They add to the proforma total without becoming stock items, and are '
+                'carried onto the sales order or invoice it becomes.',
+            children: [
+              OrderChargesEditor(
+                initialCharges: charges,
+                onChanged: (updated) => charges = updated,
               ),
             ],
           ),

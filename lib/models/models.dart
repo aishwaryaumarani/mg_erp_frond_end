@@ -656,7 +656,11 @@ class Quotation {
   double discountAmount;
   double taxAmount;
   double totalAmount;
+  /// Goods-only subtotal is [subtotal]; this is what the extra charges add
+  /// on top (backend/app/models/sales.py QuotationCharge).
+  double chargesTotal;
   List<DocLineItem> items;
+  List<OrderCharge> charges;
 
   Quotation({
     this.id,
@@ -675,8 +679,11 @@ class Quotation {
     this.discountAmount = 0,
     this.taxAmount = 0,
     this.totalAmount = 0,
+    this.chargesTotal = 0,
     List<DocLineItem>? items,
-  }) : items = items ?? [];
+    List<OrderCharge>? charges,
+  })  : items = items ?? [],
+        charges = charges ?? [];
 
   factory Quotation.fromJson(Map<String, dynamic> j) => Quotation(
         id: j['id'],
@@ -695,8 +702,12 @@ class Quotation {
         discountAmount: (j['discount_amount'] ?? 0).toDouble(),
         taxAmount: (j['tax_amount'] ?? 0).toDouble(),
         totalAmount: (j['total_amount'] ?? 0).toDouble(),
+        chargesTotal: (j['charges_total'] ?? 0).toDouble(),
         items: ((j['items'] as List<dynamic>?) ?? [])
             .map((e) => DocLineItem.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        charges: ((j['charges'] as List<dynamic>?) ?? [])
+            .map((e) => OrderCharge.fromJson(e as Map<String, dynamic>))
             .toList(),
       );
 
@@ -711,6 +722,7 @@ class Quotation {
         'shipping_address': shippingAddress,
         'notes': notes,
         'items': items.map((e) => e.toJson()).toList(),
+        'charges': charges.map((e) => e.toJson()).toList(),
       };
 }
 
