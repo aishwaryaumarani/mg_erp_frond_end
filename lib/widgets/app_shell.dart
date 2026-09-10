@@ -45,9 +45,13 @@ class AppShellNav extends InheritedWidget {
   bool updateShouldNotify(AppShellNav oldWidget) => false;
 }
 
-/// App-wide shell: collapsible sidebar (spec sec 14/16) on the left,
-/// selected screen on the right. Works as a persistent rail on wide
-/// screens and a drawer on narrow ones.
+/// App-wide shell: navy sidebar (spec sec 14/16) on the left, selected
+/// screen on the right. Works as a persistent rail on wide screens and a
+/// drawer on narrow ones.
+///
+/// The rail is dark on purpose: it holds the navigation still and lets the
+/// working area stay a clean, paper-white sheet, which is what makes a
+/// data-dense ERP readable for a whole shift.
 class AppShell extends StatefulWidget {
   final String title;
   final List<NavGroup> groups;
@@ -109,31 +113,61 @@ class _AppShellState extends State<AppShell> {
 
   Widget _buildSidebar(BuildContext context) {
     return Container(
-      color: AppColors.surface,
-      child: ListView(
-        padding: const EdgeInsets.only(bottom: 16),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [AppColors.brandDark, AppColors.brandDarker],
+        ),
+      ),
+      child: Column(
         children: [
           _buildBrandHeader(context),
-          const SizedBox(height: 12),
-          for (int g = 0; g < widget.groups.length; g++)
-            _buildGroup(context, g),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(0, 10, 0, 20),
+              children: [
+                for (int g = 0; g < widget.groups.length; g++)
+                  _buildGroup(context, g),
+              ],
+            ),
+          ),
+          _buildSidebarFooter(context),
         ],
       ),
     );
   }
 
+  /// The wordmark block. The logo sits on its own white plate because the
+  /// uploaded company logo is drawn for paper -- dark ink on white -- and
+  /// would disappear straight onto the navy.
   Widget _buildBrandHeader(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 18, 16, 14),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.navLine)),
+      ),
       child: Row(
         children: [
           Container(
             width: 46,
             height: 46,
+            padding: const EdgeInsets.all(5),
             alignment: Alignment.center,
-            child: const BrandLogo(height: 46),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(AppRadius.field),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.25),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const BrandLogo(height: 36),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 13),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -142,18 +176,29 @@ class _AppShellState extends State<AppShell> {
                   kCompanyName,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.ink,
-                      ),
+                  style: AppText.serif(
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: 0,
+                    height: 1.25,
+                  ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  'Operations ERP',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppColors.muted,
-                        fontWeight: FontWeight.w600,
+                const SizedBox(height: 5),
+                Row(
+                  children: [
+                    Container(width: 14, height: 1.5, color: AppColors.gold),
+                    const SizedBox(width: 7),
+                    const Text(
+                      'OPERATIONS ERP',
+                      style: TextStyle(
+                        color: AppColors.goldLight,
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.1,
                       ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -163,19 +208,38 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
+  Widget _buildSidebarFooter(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(22, 14, 22, 18),
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: AppColors.navLine)),
+      ),
+      child: Text(
+        'Product · Sales · Purchase · Accounts',
+        style: TextStyle(
+          color: AppColors.navMuted.withValues(alpha: 0.75),
+          fontSize: 10.5,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
+  }
+
   Widget _buildGroup(BuildContext context, int g) {
     final group = widget.groups[g];
-    final color = AppColors.forModule(group.label);
 
+    // A single-leaf group whose leaf repeats its own name (Dashboard,
+    // Settings, Team) renders flat -- an expander around one row would be
+    // a click that buys nothing.
     if (group.children.length == 1 &&
         group.children.first.label == group.label) {
-      final selected = _groupIndex == g;
       return _navTile(
         context,
-        color: color,
         icon: group.icon,
         label: group.label,
-        selected: selected,
+        selected: _groupIndex == g,
         onTap: () {
           setState(() {
             _groupIndex = g;
@@ -185,28 +249,34 @@ class _AppShellState extends State<AppShell> {
         },
       );
     }
+
+    final open = _groupIndex == g;
     return Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      data: Theme.of(context).copyWith(
+        dividerColor: Colors.transparent,
+        hoverColor: Colors.white.withValues(alpha: 0.04),
+      ),
       child: ExpansionTile(
-        tilePadding: const EdgeInsets.fromLTRB(16, 2, 12, 2),
-        leading: _iconChip(group.icon, color),
+        tilePadding: const EdgeInsets.fromLTRB(18, 0, 14, 0),
+        minTileHeight: 46,
+        leading: _iconChip(group.icon, open),
         title: Text(
           group.label,
-          style: const TextStyle(
+          style: TextStyle(
             fontWeight: FontWeight.w700,
-            color: AppColors.ink,
-            fontSize: 14,
+            color: open ? Colors.white : AppColors.navText,
+            fontSize: 13.5,
+            letterSpacing: 0.1,
           ),
         ),
-        iconColor: AppColors.muted,
-        collapsedIconColor: AppColors.muted,
-        initiallyExpanded: _groupIndex == g,
-        childrenPadding: const EdgeInsets.only(bottom: 6),
+        iconColor: AppColors.goldLight,
+        collapsedIconColor: AppColors.navMuted,
+        initiallyExpanded: open,
+        childrenPadding: const EdgeInsets.only(bottom: 8),
         children: [
           for (int l = 0; l < group.children.length; l++)
             _navTile(
               context,
-              color: color,
               icon: group.children[l].icon,
               label: group.children[l].label,
               selected: _groupIndex == g && _leafIndex == l,
@@ -224,46 +294,51 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  /// Sidebar row. Unselected rows stay neutral grey so the selected one
-  /// -- tinted background, coloured icon and label -- is the only thing
-  /// carrying the module colour at full strength.
+  /// Sidebar row. Unselected rows are quiet blue-grey on the navy; the
+  /// selected one gets a gold edge marker, a lightened ground and white
+  /// text, so exactly one row in the rail ever reads as "here".
   Widget _navTile(
     BuildContext context, {
-    required Color color,
     required IconData icon,
     required String label,
     required bool selected,
     required VoidCallback onTap,
     bool dense = false,
   }) {
-    final fg = selected ? color : AppColors.slate;
+    final fg = selected ? Colors.white : AppColors.navText;
     return Padding(
-      padding: EdgeInsets.fromLTRB(dense ? 28 : 12, 2, 12, 2),
+      padding: EdgeInsets.fromLTRB(dense ? 20 : 12, 1.5, 12, 1.5),
       child: Material(
-        color: selected ? color.withValues(alpha: 0.10) : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
+        color: selected
+            ? Colors.white.withValues(alpha: 0.10)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(AppRadius.field),
         child: InkWell(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppRadius.field),
+          hoverColor: Colors.white.withValues(alpha: 0.06),
+          splashColor: Colors.white.withValues(alpha: 0.05),
           onTap: onTap,
           child: Padding(
-            padding:
-                EdgeInsets.symmetric(horizontal: 10, vertical: dense ? 9 : 11),
+            padding: EdgeInsets.fromLTRB(8, dense ? 9 : 11, 10, dense ? 9 : 11),
             child: Row(
               children: [
-                if (selected)
-                  Container(
-                    width: 3,
-                    height: 22,
-                    margin: const EdgeInsets.only(right: 9),
-                    decoration: BoxDecoration(
-                      color: color,
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                  )
-                else
-                  const SizedBox(width: 12),
-                Icon(icon, size: dense ? 17 : 19, color: fg),
-                const SizedBox(width: 10),
+                // The gold marker is the only place the accent appears in
+                // the rail, so the eye finds the current screen instantly.
+                Container(
+                  width: 3,
+                  height: dense ? 16 : 18,
+                  margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    color: selected ? AppColors.gold : Colors.transparent,
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                  ),
+                ),
+                Icon(
+                  icon,
+                  size: dense ? 17 : 19,
+                  color: selected ? AppColors.goldLight : AppColors.navMuted,
+                ),
+                const SizedBox(width: 11),
                 Expanded(
                   child: Text(
                     label,
@@ -271,8 +346,9 @@ class _AppShellState extends State<AppShell> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: fg,
-                      fontSize: dense ? 13 : 14,
+                      fontSize: dense ? 12.8 : 13.5,
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      letterSpacing: 0.05,
                     ),
                   ),
                 ),
@@ -284,12 +360,19 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Widget _iconChip(IconData icon, Color color) => Container(
-        width: 34,
-        height: 34,
+  Widget _iconChip(IconData icon, bool open) => Container(
+        width: 32,
+        height: 32,
         alignment: Alignment.center,
-        decoration: AppColors.tintedBox(color, radius: 8, border: false),
-        child: Icon(icon, size: 18, color: color),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: open ? 0.12 : 0.06),
+          borderRadius: BorderRadius.circular(AppRadius.chip),
+        ),
+        child: Icon(
+          icon,
+          size: 17,
+          color: open ? AppColors.goldLight : AppColors.navMuted,
+        ),
       );
 
   void _closeDrawerIfAny(BuildContext context) {
@@ -317,14 +400,15 @@ class _AppShellState extends State<AppShell> {
         return Scaffold(
           body: Row(
             children: [
-              SizedBox(width: 276, child: _buildSidebar(context)),
-              const VerticalDivider(width: 1),
+              SizedBox(width: 268, child: _buildSidebar(context)),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _TopBar(
+                      group: currentGroup.label,
                       title: currentLeaf.label,
+                      icon: currentLeaf.icon,
                       color: AppColors.forModule(currentGroup.label),
                       actions: widget.actions,
                     ),
@@ -339,29 +423,56 @@ class _AppShellState extends State<AppShell> {
 
       return Scaffold(
         appBar: AppBar(
-          title: Text(currentLeaf.label),
-          backgroundColor: AppColors.surface,
-          foregroundColor: AppColors.ink,
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(currentLeaf.label, style: AppText.serif(fontSize: 17)),
+              Text(
+                currentGroup.label.toUpperCase(),
+                style: const TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.9,
+                ),
+              ),
+            ],
+          ),
           actions: widget.actions,
         ),
-        drawer: Drawer(child: _buildSidebar(context)),
+        drawer: Drawer(
+          width: 286,
+          child: _buildSidebar(context),
+        ),
         body: body,
       );
     });
   }
 }
 
+/// The working-area header: a breadcrumb over the screen title on the
+/// left, the signed-in user on the right. It repeats the module name so
+/// the page still says where it is once the rail scrolls out of mind.
 class _TopBar extends StatelessWidget {
+  final String group;
   final String title;
+  final IconData icon;
   final Color color;
   final List<Widget> actions;
-  const _TopBar(
-      {required this.title, required this.color, this.actions = const []});
+
+  const _TopBar({
+    required this.group,
+    required this.title,
+    required this.icon,
+    required this.color,
+    this.actions = const [],
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 68,
+      height: 74,
       padding: const EdgeInsets.symmetric(horizontal: 28),
       decoration: const BoxDecoration(
         color: AppColors.surface,
@@ -370,33 +481,66 @@ class _TopBar extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 36,
-            height: 36,
+            width: 38,
+            height: 38,
             alignment: Alignment.center,
-            decoration: AppColors.tintedBox(color, radius: 8, border: false),
-            child: Icon(Icons.layers_outlined, color: color, size: 19),
+            decoration: AppColors.tintedBox(color, radius: AppRadius.field),
+            child: Icon(icon, color: color, size: 19),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        group.toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    ),
+                    if (group != title) ...[
+                      const SizedBox(width: 6),
+                      const Text(
+                        '/',
+                        style: TextStyle(
+                          color: AppColors.faint,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          title.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.faint,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 3),
                 Text(
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.ink,
-                      ),
-                ),
-                Text(
-                  kCompanyName,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppColors.muted,
-                        fontWeight: FontWeight.w600,
-                      ),
+                  style: AppText.serif(fontSize: 20),
                 ),
               ],
             ),

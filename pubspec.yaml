@@ -28,3 +28,16 @@ flutter:
 
   assets:
     - assets/images/mg_logo.png
+
+  # Source Serif 4 (SIL Open Font License 1.1) -- the display face behind
+  # AppText.serif in lib/theme/app_theme.dart. Bundled rather than named
+  # as a system font because Flutter Web renders through CanvasKit, which
+  # cannot reach the host's installed fonts: a system-font fallback there
+  # degrades silently to the default sans.
+  fonts:
+    - family: SourceSerif
+      fonts:
+        - asset: assets/fonts/SourceSerif4-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/SourceSerif4-Bold.ttf
+          weight: 700

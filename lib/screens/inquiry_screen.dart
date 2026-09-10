@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_service.dart';
+import '../widgets/deal_fields.dart';
 import '../services/document_pdf.dart';
 import '../widgets/doc_detail_page.dart';
 import '../widgets/doc_address_fields.dart';
@@ -163,7 +164,12 @@ class _InquiryScreenState extends State<InquiryScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Quotation ${created.quotationNo ?? ''} created -- review pricing below.')),
     );
-    final result = await openQuotationForm(context, existing: created, customers: _customers, products: _products, taxes: _taxes);
+    final result = await openQuotationForm(context,
+        existing: created,
+        customers: _customers,
+        products: _products,
+        taxes: _taxes,
+        deal: await DealOptions.load());
     if (result == null) return;
     try {
       await ApiService.instance.update('/api/quotations/${created.id}', result.toJson());

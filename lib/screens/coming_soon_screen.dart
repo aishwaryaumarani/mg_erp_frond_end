@@ -10,39 +10,65 @@ class ComingSoonScreen extends StatelessWidget {
   final String moduleName;
   final String phaseNote;
 
-  const ComingSoonScreen({super.key, required this.moduleName, required this.phaseNote});
+  const ComingSoonScreen({
+    super.key,
+    required this.moduleName,
+    required this.phaseNote,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: AppColors.tintedBox(AppColors.amber, radius: 20),
-              child: const Icon(Icons.construction_outlined, size: 44, color: AppColors.amber),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              moduleName,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.brand,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(32, 34, 32, 34),
+            decoration: AppColors.panel(radius: AppRadius.panel, shadow: true),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 62,
+                  height: 62,
+                  alignment: Alignment.center,
+                  decoration: AppColors.tintedBox(AppColors.amber,
+                      radius: AppRadius.card, border: false),
+                  child: const Icon(Icons.construction_outlined,
+                      size: 28, color: AppColors.amber),
+                ),
+                const SizedBox(height: 22),
+                Text(
+                  moduleName,
+                  textAlign: TextAlign.center,
+                  style: AppText.serif(fontSize: 22),
+                ),
+                const SizedBox(height: 10),
+                Container(width: 34, height: 2, color: AppColors.gold),
+                const SizedBox(height: 16),
+                Text(
+                  phaseNote,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 22),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceAlt,
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                    border: Border.all(color: AppColors.line),
                   ),
+                  child: Text(
+                    'PLANNED FOR A LATER PHASE',
+                    style: AppText.overline.copyWith(fontSize: 10),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Text(
-                phaseNote,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.slate),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

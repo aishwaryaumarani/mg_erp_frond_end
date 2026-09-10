@@ -36,6 +36,7 @@ class DocFormPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.page,
       appBar: AppBar(
+        leadingWidth: 56,
         leading: IconButton(
           icon: const Icon(Icons.close),
           tooltip: 'Cancel',
@@ -45,47 +46,70 @@ class DocFormPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+            Text(title, style: AppText.serif(fontSize: 18)),
             if (subtitle != null && subtitle!.isNotEmpty)
-              Text(subtitle!, style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+              Text(
+                subtitle!,
+                style: const TextStyle(color: AppColors.muted, fontSize: 12),
+              ),
           ],
         ),
-        shape: const Border(bottom: BorderSide(color: AppColors.line)),
       ),
       body: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 980),
+          constraints: const BoxConstraints(maxWidth: 1000),
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 36),
             children: children,
           ),
         ),
       ),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          border: Border(top: BorderSide(color: AppColors.line)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).maybePop(),
-                  child: const Text('Cancel'),
-                ),
-                const SizedBox(width: 12),
-                FilledButton.icon(
-                  onPressed: onSave,
-                  icon: const Icon(Icons.check),
-                  label: Text(saveLabel),
-                ),
-              ],
-            ),
+      bottomNavigationBar: DocActionBar(
+        children: [
+          TextButton(
+            onPressed: () => Navigator.of(context).maybePop(),
+            child: const Text('Cancel'),
+          ),
+          const SizedBox(width: 12),
+          FilledButton.icon(
+            onPressed: onSave,
+            icon: const Icon(Icons.check, size: 19),
+            label: Text(saveLabel),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The sticky footer every document page ends on -- a white shelf with a
+/// hairline above it, so the primary action never scrolls out of reach.
+class DocActionBar extends StatelessWidget {
+  final List<Widget> children;
+  final Widget? leading;
+
+  const DocActionBar({super.key, required this.children, this.leading});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.line)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+          child: Row(
+            children: [
+              if (leading != null)
+                Expanded(child: leading!)
+              else
+                const Spacer(),
+              ...children,
+            ],
           ),
         ),
       ),
@@ -100,30 +124,35 @@ class DocFormSection extends StatelessWidget {
   final String? hint;
   final List<Widget> children;
 
-  const DocFormSection({super.key, required this.title, this.hint, required this.children});
+  const DocFormSection({
+    super.key,
+    required this.title,
+    this.hint,
+    required this.children,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.ink, fontSize: 15),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              color: AppColors.surfaceAlt,
+              padding: const EdgeInsets.fromLTRB(18, 15, 18, 15),
+              child: SectionHeading(title: title, subtitle: hint),
+            ),
+            const Divider(),
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: children,
               ),
-              if (hint != null) ...[
-                const SizedBox(height: 4),
-                Text(hint!, style: const TextStyle(color: AppColors.muted, fontSize: 12)),
-              ],
-              const SizedBox(height: 14),
-              ...children,
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -144,6 +173,13 @@ Future<T?> openDocFormPage<T>(BuildContext context, WidgetBuilder builder) {
 /// field is missing.
 void showFormError(BuildContext context, String message) {
   ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(message), backgroundColor: AppColors.rose),
+    SnackBar(
+      content: Row(children: [
+        const Icon(Icons.error_outline, color: Colors.white, size: 19),
+        const SizedBox(width: 10),
+        Expanded(child: Text(message)),
+      ]),
+      backgroundColor: AppColors.rose,
+    ),
   );
 }

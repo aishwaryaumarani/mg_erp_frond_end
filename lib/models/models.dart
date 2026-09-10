@@ -640,6 +640,14 @@ class Quotation {
   String? quotationDate;
   String? validUntil;
   String status; // Draft | Submitted | Approved | Cancelled
+  /// How likely this quote is to be won: 10/25/50/75/90/100. Only the
+  /// weighted share of an open quote reaches the forecast, so this is
+  /// what decides how much of it does (backend/app/core/projection.py).
+  double probability;
+  /// Who owns the deal, and the branch/store it belongs to. Both optional
+  /// -- a quotation raised before these existed carries neither.
+  int? salespersonId;
+  int? warehouseId;
   /// Server-set: the document has been moved on to the next step, so
   /// its status is frozen (backend/app/core/workflow.py).
   final bool isLocked;
@@ -670,6 +678,9 @@ class Quotation {
     this.quotationDate,
     this.validUntil,
     this.status = 'Draft',
+    this.probability = 50,
+    this.salespersonId,
+    this.warehouseId,
     this.isLocked = false,
     this.convertedTo,
     this.billingAddress,
@@ -693,6 +704,9 @@ class Quotation {
         quotationDate: j['quotation_date'],
         validUntil: j['valid_until'],
         status: j['status'] ?? 'Draft',
+        probability: (j['probability'] ?? 50).toDouble(),
+        salespersonId: j['salesperson_id'],
+        warehouseId: j['warehouse_id'],
         isLocked: j['is_locked'] ?? false,
         convertedTo: j['converted_to'],
         billingAddress: j['billing_address'],
@@ -718,6 +732,9 @@ class Quotation {
         'quotation_date': quotationDate,
         'valid_until': validUntil,
         'status': status,
+        'probability': probability,
+        'salesperson_id': salespersonId,
+        'warehouse_id': warehouseId,
         'billing_address': billingAddress,
         'shipping_address': shippingAddress,
         'notes': notes,
@@ -766,6 +783,12 @@ class SalesOrder {
   /// its status is frozen (backend/app/core/workflow.py).
   final bool isLocked;
 
+  /// Who the sale is credited to, and the branch/store it belongs to.
+  /// Carried over from the document this one was raised from; both feed
+  /// the Sales Projection breakdowns (backend/app/core/projection.py).
+  int? salespersonId;
+  int? warehouseId;
+
   /// Server-set: this order has already been sent to Delivery / invoiced,
   /// so those steps are not offered again.
   final bool hasDelivery;
@@ -794,6 +817,8 @@ class SalesOrder {
     required this.customerId,
     this.orderDate,
     this.status = 'Draft',
+    this.salespersonId,
+    this.warehouseId,
     this.isLocked = false,
     this.hasDelivery = false,
     this.hasInvoice = false,
@@ -817,6 +842,8 @@ class SalesOrder {
         customerId: j['customer_id'],
         orderDate: j['order_date'],
         status: j['status'] ?? 'Draft',
+        salespersonId: j['salesperson_id'],
+        warehouseId: j['warehouse_id'],
         isLocked: j['is_locked'] ?? false,
         hasDelivery: j['has_delivery'] ?? false,
         hasInvoice: j['has_invoice'] ?? false,
@@ -842,6 +869,8 @@ class SalesOrder {
         'customer_id': customerId,
         'order_date': orderDate,
         'status': status,
+        'salesperson_id': salespersonId,
+        'warehouse_id': warehouseId,
         'billing_address': billingAddress,
         'shipping_address': shippingAddress,
         'notes': notes,
@@ -1328,6 +1357,11 @@ class SalesInvoice {
   String? dueDate;
   String status; // Draft | Posted | PartiallyPaid | Paid | Cancelled
   String? notes;
+  /// Who the sale is credited to, and the branch/store it belongs to.
+  /// Carried over from the document this one was raised from; both feed
+  /// the Sales Projection breakdowns (backend/app/core/projection.py).
+  int? salespersonId;
+  int? warehouseId;
   double subtotal;
   double discountAmount;
   double taxAmount;
@@ -1346,6 +1380,8 @@ class SalesInvoice {
     this.dueDate,
     this.status = 'Draft',
     this.notes,
+    this.salespersonId,
+    this.warehouseId,
     this.subtotal = 0,
     this.discountAmount = 0,
     this.taxAmount = 0,
@@ -1367,6 +1403,8 @@ class SalesInvoice {
         dueDate: j['due_date'],
         status: j['status'] ?? 'Draft',
         notes: j['notes'],
+        salespersonId: j['salesperson_id'],
+        warehouseId: j['warehouse_id'],
         subtotal: (j['subtotal'] ?? 0).toDouble(),
         discountAmount: (j['discount_amount'] ?? 0).toDouble(),
         taxAmount: (j['tax_amount'] ?? 0).toDouble(),
@@ -1385,6 +1423,8 @@ class SalesInvoice {
         'due_date': dueDate,
         'status': status,
         'notes': notes,
+        'salesperson_id': salespersonId,
+        'warehouse_id': warehouseId,
         'items': items.map((e) => e.toJson()).toList(),
       };
 }

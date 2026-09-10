@@ -33,6 +33,7 @@ import 'screens/chart_of_accounts_screen.dart';
 import 'screens/general_ledger_screen.dart';
 import 'screens/journal_screen.dart';
 import 'screens/report_screen.dart';
+import 'screens/sales_projection_screen.dart';
 import 'screens/settings_screen.dart';
 import 'widgets/app_shell.dart';
 import 'theme/app_theme.dart';
@@ -260,8 +261,14 @@ class MiniErpApp extends StatelessWidget {
         ]),
 
       // Reports -- Phase 7.
-      if (can('reports'))
+      if (can('reports') || can('sales'))
         NavGroup('Reports', Icons.bar_chart_outlined, [
+          // The management forecast. Open to Sales as well as Reports --
+          // it is the sales department's own pipeline, and the endpoints
+          // behind it are gated the same way
+          // (backend/app/main.py, backend/app/routers/sales_projection.py).
+          const NavLeaf('Sales Projection', Icons.insights_outlined, _salesProjection),
+          if (can('reports')) ...[
           NavLeaf(
               'Sales Report',
               Icons.show_chart,
@@ -448,6 +455,7 @@ class MiniErpApp extends StatelessWidget {
                       ReportColumn('amount', 'Amount', money: true),
                     ],
                   )),
+          ],
         ]),
 
       // Settings -- single-leaf group.
@@ -565,6 +573,7 @@ class MiniErpApp extends StatelessWidget {
   }
 
   static Widget _dashboard(BuildContext ctx) => const DashboardScreen();
+  static Widget _salesProjection(BuildContext ctx) => const SalesProjectionScreen();
   static Widget _products(BuildContext ctx) => const ProductScreen();
   static Widget _categories(BuildContext ctx) => const CategoryScreen();
   static Widget _brands(BuildContext ctx) => const BrandScreen();

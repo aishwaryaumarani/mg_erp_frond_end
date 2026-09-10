@@ -3,6 +3,7 @@ import '../models/models.dart';
 import '../services/api_service.dart';
 import '../services/document_pdf.dart';
 import '../widgets/doc_detail_page.dart';
+import '../widgets/deal_fields.dart';
 import '../widgets/doc_address_fields.dart';
 import '../widgets/doc_form_page.dart';
 import '../widgets/doc_items_editor.dart';
@@ -43,6 +44,7 @@ class _QuotationScreenState extends State<QuotationScreen> {
   List<Customer> _customers = [];
   List<Product> _products = [];
   List<Tax> _taxes = [];
+  DealOptions _deal = const DealOptions();
   bool _loading = true;
   String? _error;
 
@@ -71,6 +73,12 @@ class _QuotationScreenState extends State<QuotationScreen> {
         _taxes = results[3].map((e) => Tax.fromJson(e as Map<String, dynamic>)).toList();
         _loading = false;
       });
+      // Salespeople and branches for the deal section. Loaded after the
+      // documents rather than alongside them: the list is optional, and a
+      // sales user who cannot reach the projection endpoint should still
+      // get their quotations.
+      final deal = await DealOptions.load();
+      if (mounted) setState(() => _deal = deal);
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -104,6 +112,8 @@ class _QuotationScreenState extends State<QuotationScreen> {
         fields: {
           'Quotation date': q.quotationDate ?? '--',
           if (q.validUntil != null && q.validUntil!.isNotEmpty) 'Valid until': q.validUntil!,
+          'Win probability': '${q.probability % 1 == 0 ? q.probability.round() : q.probability}%',
+          'Salesperson': _salespersonName(q.salespersonId),
           if (q.inquiryId != null) 'From inquiry': '#${q.inquiryId}',
         },
         billingAddress: q.billingAddress,
@@ -135,13 +145,22 @@ class _QuotationScreenState extends State<QuotationScreen> {
         notes: q.notes,
       );
 
+  /// Blank rather than a guess: a quotation raised before the field
+  /// existed has no owner, and the forecast shows it as Unassigned.
+  String _salespersonName(int? id) {
+    if (id == null) return 'Unassigned';
+    final matches = _deal.salespeople.where((p) => p.id == id);
+    return matches.isEmpty ? 'Team member #$id' : matches.first.name;
+  }
+
   String _customerName(int id) {
     final matches = _customers.where((c) => c.id == id);
     return matches.isEmpty ? 'Customer #$id' : matches.first.name;
   }
 
   Future<void> _create() async {
-    final result = await openQuotationForm(context, existing: null, customers: _customers, products: _products, taxes: _taxes);
+    final result = await openQuotationForm(context,
+        existing: null, customers: _customers, products: _products, taxes: _taxes, deal: _deal);
     if (result == null) return;
     try {
       await ApiService.instance.create('/api/quotations/', result.toJson());
@@ -152,7 +171,8 @@ class _QuotationScreenState extends State<QuotationScreen> {
   }
 
   Future<void> _edit(Quotation q) async {
-    final result = await openQuotationForm(context, existing: q, customers: _customers, products: _products, taxes: _taxes);
+    final result = await openQuotationForm(context,
+        existing: q, customers: _customers, products: _products, taxes: _taxes, deal: _deal);
     if (result == null) return;
     try {
       await ApiService.instance.update('/api/quotations/${q.id}', result.toJson());
@@ -358,8 +378,15 @@ Future<Quotation?> openQuotationForm(
   required List<Customer> customers,
   required List<Product> products,
   required List<Tax> taxes,
+  /// Salespeople, branches and the probability ladder. Optional so the
+  /// Inquiry screen can open this form without loading them first -- the
+  /// deal section then falls back to the defaults.
+  DealOptions deal = const DealOptions(),
 }) {
   int? customerId = existing?.customerId ?? (customers.isEmpty ? null : customers.first.id);
+  double probability = existing?.probability ?? 50;
+  int? salespersonId = existing?.salespersonId;
+  int? warehouseId = existing?.warehouseId;
   final quotationDate = TextEditingController(text: existing?.quotationDate ?? DateTime.now().toIso8601String().substring(0, 10));
   final validUntil = TextEditingController(text: existing?.validUntil ?? '');
   final billing = TextEditingController(text: existing?.billingAddress ?? '');
@@ -424,6 +451,9 @@ Future<Quotation?> openQuotationForm(
               quotationDate: quotationDate.text.trim(),
               validUntil: validUntil.text.trim().isEmpty ? null : validUntil.text.trim(),
               status: existing?.status ?? 'Draft',
+              probability: probability,
+              salespersonId: salespersonId,
+              warehouseId: warehouseId,
               billingAddress: billing.text.trim().isEmpty ? null : billing.text.trim(),
               shippingAddress: shipping.text.trim().isEmpty ? null : shipping.text.trim(),
               notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
@@ -458,6 +488,41 @@ Future<Quotation?> openQuotationForm(
                 Expanded(child: TextField(controller: quotationDate, decoration: const InputDecoration(labelText: 'Quotation Date (YYYY-MM-DD)'))),
                 const SizedBox(width: 12),
                 Expanded(child: TextField(controller: validUntil, decoration: const InputDecoration(labelText: 'Valid Until (YYYY-MM-DD)'))),
+              ]),
+            ],
+          ),
+          DocFormSection(
+            title: 'The deal',
+            hint: 'Feeds the Sales Projection dashboard: only the probability share of an '
+                'open quotation counts towards the forecast, and it is credited to the '
+                'salesperson and branch named here.',
+            children: [
+              ProbabilityField(
+                value: probability,
+                options: deal.probabilities,
+                onChanged: (value) => setState(() => probability = value),
+              ),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                  child: DealOwnerField(
+                    label: 'Salesperson',
+                    emptyLabel: deal.salespeople.isEmpty ? 'No team members yet' : 'Unassigned',
+                    value: salespersonId,
+                    options: deal.salespeople,
+                    onChanged: (value) => setState(() => salespersonId = value),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: DealOwnerField(
+                    label: 'Branch / store',
+                    emptyLabel: deal.warehouses.isEmpty ? 'No warehouses yet' : 'Not set',
+                    value: warehouseId,
+                    options: deal.warehouses,
+                    onChanged: (value) => setState(() => warehouseId = value),
+                  ),
+                ),
               ]),
             ],
           ),

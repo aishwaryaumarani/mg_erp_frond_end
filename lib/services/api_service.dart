@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import 'auth_service.dart';
@@ -108,6 +109,38 @@ class ApiService {
       throw ApiException(res.statusCode, 'Could not load $path');
     }
     return res.bodyBytes;
+  }
+
+  /// Downloads a generated file (Excel/PDF export) and hands the browser
+  /// or the OS a Save dialog.
+  ///
+  /// It cannot be a plain link: every export endpoint is behind the same
+  /// Bearer token as the rest of the API, and a link carries no header.
+  /// So the bytes are fetched here and saved through file_picker, which
+  /// triggers a normal download on web and a save dialog everywhere else.
+  ///
+  /// The filename comes off the server's Content-Disposition where it is
+  /// readable -- it is the name the report gave itself -- and falls back
+  /// to [fallbackName], because a cross-origin browser only exposes that
+  /// header when the server says it may (the backend does; a proxy in
+  /// front of it might not).
+  Future<void> download(
+    String path, {
+    Map<String, dynamic>? query,
+    required String fallbackName,
+    required String mimeType,
+  }) async {
+    final res = await http.get(_uri(path, query), headers: _headers());
+    if (res.statusCode >= 400) {
+      _decode(res); // throws ApiException carrying the server's message
+    }
+    final disposition = res.headers['content-disposition'] ?? '';
+    final match = RegExp(r'filename="?([^";]+)"?').firstMatch(disposition);
+    await FilePicker.saveFile(
+      fileName: match?.group(1) ?? fallbackName,
+      bytes: res.bodyBytes,
+      mimeType: mimeType,
+    );
   }
 
   /// Multipart upload -- used to send a supplier's invoice PDF to
