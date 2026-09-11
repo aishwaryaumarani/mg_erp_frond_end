@@ -35,6 +35,7 @@ import 'screens/journal_screen.dart';
 import 'screens/report_screen.dart';
 import 'screens/sales_projection_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/tally_export_screen.dart';
 import 'widgets/app_shell.dart';
 import 'theme/app_theme.dart';
 
@@ -258,6 +259,10 @@ class MiniErpApp extends StatelessWidget {
                     initialAccountCode: 'OUTPUT_TAX',
                     onlyCodes: ['OUTPUT_TAX', 'INPUT_TAX'],
                   )),
+          // Posted sales and purchase invoices as Tally import files --
+          // mounted behind the Accounts permission on the backend too.
+          NavLeaf('Tally Export', Icons.upload_file_outlined,
+              (ctx) => const TallyExportScreen()),
         ]),
 
       // Reports -- Phase 7.
